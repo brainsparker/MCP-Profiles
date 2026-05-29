@@ -1,0 +1,46 @@
+{
+  "name": "mcp-profiles",
+  "version": "0.1.0",
+  "description": "Portable, reusable operating systems for AI agents — a Model Context Protocol gateway that re-exposes downstream MCP tools according to the active profile.",
+  "license": "MIT",
+  "author": "Brian Sparker <brian@you.com>",
+  "type": "module",
+  "bin": {
+    "mcp-profiles": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "spec",
+    "profiles"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "gen:types": "json2ts spec/profile.schema.json -o src/profile/types.ts --bannerComment \"/* AUTO-GENERATED from spec/profile.schema.json — do not edit by hand. Run: npm run gen:types */\"",
+    "inspect": "npm run build && npx @modelcontextprotocol/inspector node dist/index.js --profile growth-pm"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "commander": "^12.1.0",
+    "yaml": "^2.6.1",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "json-schema-to-typescript": "^15.0.3",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
