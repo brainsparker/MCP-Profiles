@@ -6,7 +6,7 @@
   "author": "Brian Sparker <brian@you.com>",
   "type": "module",
   "bin": {
-    "mcp-profiles": "./dist/index.js"
+    "mcp-profiles": "dist/index.js"
   },
   "main": "./dist/index.js",
   "files": [
@@ -19,6 +19,7 @@
   },
   "scripts": {
     "build": "tsup",
+    "prepublishOnly": "npm run build",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
