@@ -1,21 +1,11 @@
 {
-  "$comment": "Example MCP client config (e.g. Claude Desktop's claude_desktop_config.json). Point the gateway at your profiles dir and downstream registry. Switch profiles at runtime by calling the switch_profile tool.",
+  "$comment": "Example MCP client config (e.g. Claude Desktop's claude_desktop_config.json). In Claude Code, prefer: claude mcp add you-aware --env YDC_API_KEY=your-key -- npx -y @youdotcom-oss/you-aware",
   "mcpServers": {
-    "mcp-profiles": {
-      "command": "node",
-      "args": [
-        "/absolute/path/to/mcp-profiles/dist/index.js",
-        "--profiles-dir",
-        "/absolute/path/to/mcp-profiles/profiles",
-        "--config",
-        "/absolute/path/to/mcp-profiles/mcp-profiles.config.json",
-        "--profile",
-        "growth-pm"
-      ],
+    "you-aware": {
+      "command": "npx",
+      "args": ["-y", "@youdotcom-oss/you-aware", "--project-root", "/path/to/your/project"],
       "env": {
-        "AMPLITUDE_KEY": "...",
-        "NOTION_TOKEN": "...",
-        "LINEAR_TOKEN": "..."
+        "YDC_API_KEY": "your-you.com-search-api-key"
       }
     }
   }

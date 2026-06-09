@@ -1,115 +1,130 @@
-# MCP Profiles
+# you-aware
 
-**Portable, reusable operating systems for AI agents.**
+**Context-aware web search for AI agents — search that already knows what you're working on.**
 
-Most agent platforms treat every agent as interchangeable — pick a model, attach tools, send prompts. But a Growth PM, a software engineer, and a financial analyst should not behave the same way. They need different memory, retrieval, sources, tools, and workflows.
+`you-aware` is an opinionated, installable [MCP](https://modelcontextprotocol.io) server that makes web search measurably better when the caller is an AI agent. It delivers the You.com Search API's context-aware parameters into the agent harnesses developers already use (Claude Code, Cursor, Cline) by reading the harness context the developer has already written — `CLAUDE.md` — and compiling it into the lexical, operator-heavy query language production agents actually speak.
 
-An **MCP Profile** defines an agent's *identity* independently of the model:
-
-- **Memory** sources
-- **Retrieval** strategy and preferred sources
-- **Tool** access (permissions)
-- **Workflow** rules and operating procedures
-- **Persona** (role, objectives, voice)
-
-The same underlying model, paired with different profiles, behaves like different agents.
-
-## How it works
-
-This repo ships two things:
-
-1. **A language-agnostic spec** — profiles are YAML, validated by [`spec/profile.schema.json`](./spec/profile.schema.json) (JSON Schema draft 2020-12). The schema is the durable, shareable primitive; any language can consume it.
-2. **A reference MCP gateway** (TypeScript) — a real [Model Context Protocol](https://modelcontextprotocol.io) server that is *also* a client to your downstream MCP servers.
+Your agent's harness already knows your trusted sources, your prior decisions, and your stack. The search API call should reflect all of it. With `you-aware`, it does — without configuring a second memory system.
 
 ```
-   ┌─────────────┐      MCP       ┌──────────────────┐      MCP       ┌─────────────────┐
-   │  MCP client │ ───────────▶   │  mcp-profiles    │ ───────────▶   │ amplitude-mcp   │
-   │ (the agent) │   (server)     │     gateway      │   (client)     │ notion-mcp      │
-   └─────────────┘ ◀───────────   │                  │ ◀───────────   │ linear-mcp …    │
-                   only the tools  │ active profile → │  all tools     └─────────────────┘
-                   the profile     │ filters + routes │
-                   permits         └──────────────────┘
+"best way to handle date parsing in this project"
+        │
+        ▼  reads CLAUDE.md · merges model-supplied context · compiles
+typescript date parsing "date-fns" -moment        + trusted/blocked/freshness params
+        │
+        ▼
+ranked You.com results + an inspectable trace of exactly what ran
 ```
 
-The gateway connects to your downstream MCP servers, aggregates their tools, and **re-exposes only the tools the active profile permits**. Switching profiles at runtime reshapes the exposed tools/resources/prompts and emits `tools/list_changed` so the client re-fetches — same model, a different operating system.
-
-## Quick start
+## Install
 
 ```bash
-npm install
-npm run build
+# Claude Code
+claude mcp add you-aware --env YDC_API_KEY=your-key -- npx -y @youdotcom-oss/you-aware
 
-# Run the gateway over stdio with the example profiles
-node dist/index.js --profile growth-pm \
-  --profiles-dir ./profiles \
-  --config ./mcp-profiles.config.json
+# Cursor (one-click installer) and Cline (marketplace) ship at public GA
 ```
 
-Options (CLI flag > env var > default):
+One command. No account creation. No memory setup. The API key is the same You.com Search API key you already have (or grab at [api.you.com](https://api.you.com)). First retrieval works immediately because your harness context is already in place.
+
+**Data handling, in one sentence:** search queries (received and compiled), populated search parameters, returned result URLs, and outcome signals (e.g. near-duplicate rate) flow to You.com under platform terms to improve agentic retrieval (opt out with `YOU_AWARE_TELEMETRY=off`); your raw `CLAUDE.md`, conversation history, and file paths never leave your machine. Details in [docs/data-handling.md](./docs/data-handling.md).
+
+## What it does
+
+The server exposes **one tool — `search`** — with a `query` plus the four context-aware parameters of the You.com Search API (the durable contract, documented in [spec/search-parameters.md](./spec/search-parameters.md)):
+
+| Parameter | Type | Retrieval mechanic |
+|---|---|---|
+| `trusted_sources` | `string[]` | per-domain boost at rank time |
+| `blocked_sources` | `string[]` | per-domain filter / hard demotion |
+| `project_context` | `string` (≤ 4 KB) | context-conditioned ranking + lexical vocabulary injection |
+| `freshness` | `"fresh" \| "stable" \| "any"` | recency window tuning |
+
+All parameters are optional. With everything omitted you get exactly today's Search API behavior — no regression.
+
+### Parameter population (Mechanism C)
+
+1. At call time, the server reads your project's `CLAUDE.md` (walking up from the project root).
+2. It parses the [documented section conventions](./docs/context-conventions.md) — `## Trusted Sources`, `## Blocked Sources`, `## Decisions`, `## Project Context`, `## Freshness` — into ground-truth parameter values. No structured config required: any `CLAUDE.md` works (top-of-file content becomes `project_context`).
+3. The calling model may *also* populate the same parameters from its working context.
+4. The final API call uses whichever source produces the higher-quality parameter, with the deterministic file-read as the safety net: source lists are unioned, and a model-supplied `project_context` (which can fold in conversation-level context the file can't see) overrides the file-derived one.
+5. Both populated values are logged for ongoing quality measurement.
+
+Opt out of file reading entirely with `YOU_AWARE_READ_CONTEXT=off` (model-population only).
+
+### Query compilation
+
+Context delivers the most value compiled into the query shape the workload actually has — lexical, operator-heavy:
+
+- `project_context` → vocabulary injection: stack disambiguation terms, topically relevant library names, and version numbers appended as quoted terms
+- **Decisions ledger** → negative vocabulary: rejected options become exclusion terms (a project that rejected `moment.js` gets `-moment` on date-library queries — and never on queries that mention moment themselves)
+- `trusted_sources` → `site:` constraints when narrowing is wanted (`operators` mode), or the boost parameter when recall must be preserved (`auto`, the default)
+- `blocked_sources` → negation operators or the filter parameter
+- `freshness` → date operators or the freshness parameter
+
+Already-lexical queries (quotes, `site:`, `-term`) pass through untouched — the agent shaped them deliberately.
+
+**Multi-hop queries** get a structured `decomposition_request` back instead of results: the harness's frontier model is the rewriter (it produces sub-queries at zero marginal cost), never a server-side rewriter you pay for.
+
+### The trace
+
+Every response includes an inspectable trace of the NL-to-lexical transformation — developers debug agents constantly, and if you can't see what `you-aware` did, you won't trust it:
+
+```
+trace:
+  query_received: "best way to handle date parsing in this project"
+  query_compiled: "typescript date parsing \"date-fns\" -moment"
+  trusted_sources_boost: [react.dev, tanstack.com]
+  blocked_sources_applied: [w3schools.com]
+  decisions_applied: ["moment.js rejected → -moment"]
+  project_context_chars: 1284
+  freshness: "stable"
+  pre_rank_top_3: [...]
+  post_rank_top_3: [...]
+```
+
+## Configuration
+
+CLI flag > environment variable > default.
 
 | Flag | Env | Default | Purpose |
 |---|---|---|---|
-| `--profile <id>` | `MCP_PROFILE` | first loaded | active profile at startup |
-| `--profiles-dir <path>` | `MCP_PROFILES_DIR` | `./profiles` | directory of YAML profiles |
-| `--config <path>` | `MCP_PROFILES_CONFIG` | `./mcp-profiles.config.json` | downstream server registry |
+| `--api-key` | `YDC_API_KEY` (or `YOU_API_KEY`) | — | You.com Search API key |
+| `--project-root` | `YOU_AWARE_PROJECT_ROOT` | cwd | where to look for `CLAUDE.md` |
+| `--no-context-read` | `YOU_AWARE_READ_CONTEXT=off` | on | disable the deterministic file-read |
+| `--no-telemetry` | `YOU_AWARE_TELEMETRY=off` | on | opt out of Tier 2 telemetry |
+| `--telemetry-url` | `YOU_AWARE_TELEMETRY_URL` | — | remote Tier 2 sink (events always spool locally while telemetry is on) |
+| `--telemetry-dir` | `YOU_AWARE_TELEMETRY_DIR` | `~/.you-aware` | where the local Tier 2 JSONL spool lives |
+| `--compile-mode` | `YOU_AWARE_COMPILE_MODE` | `auto` | `auto` (native params + query vocabulary) · `operators` (portable `site:`/`-site:`/`after:` compilation) · `native` (params only) |
+| `--fresh-window-days` | `YOU_AWARE_FRESH_WINDOW_DAYS` | `180` | recency window compiled from `freshness: fresh` in operators mode |
+| `--count` | `YOU_AWARE_COUNT` | `10` | results requested per call |
+| `--base-url` | `YOU_API_BASE_URL` | `https://api.ydc-index.io` | Search API endpoint |
 
-### Inspect it
+A sample `CLAUDE.md` showing all section conventions is in [examples/CLAUDE.md](./examples/CLAUDE.md); a Claude Desktop config in [examples/client-config/claude-desktop.json](./examples/client-config/claude-desktop.json).
+
+## Evaluation
+
+The ablation-controlled eval harness (control passthrough vs. compiled lexical vs. compiled + decomposition) lives in [`eval/`](./eval), with uniform-weight UDCG@K as the primary metric (agents consume all K results — position-discounted metrics mis-measure the workload), plus citation precision/recall@10 and calls-per-task. See [eval/README.md](./eval/README.md).
 
 ```bash
-npm run inspect   # builds + launches the MCP Inspector against growth-pm
+YDC_API_KEY=… npm run eval -- --goldset eval/goldset.sample.jsonl --arm all
 ```
-
-In the Inspector: the **Tools** tab shows only the permitted tools (plus the built-in `switch_profile` / `list_profiles`), **Resources** shows `profile://active` / persona / memory, and **Prompts** shows the profile's procedures. Call `switch_profile` and watch the tool list change live.
-
-### Wire it into a client
-
-See [`examples/client-config/claude-desktop.json`](./examples/client-config/claude-desktop.json).
-
-## Profiles
-
-A profile is YAML (see [`profiles/`](./profiles) and the [spec README](./spec/README.md)):
-
-```yaml
-apiVersion: mcp-profiles/v1
-kind: Profile
-metadata: { id: growth-pm, name: Growth PM }
-persona:
-  role: Growth Product Manager
-  voice: Concise, hypothesis-driven, metrics-first.
-tools:
-  defaultPolicy: deny           # the enforcement surface
-  allow:
-    - { server: amplitude-mcp, tools: ["query_event", "get_funnel"] }
-    - { server: notion-mcp, tools: ["*"] }
-  deny:
-    - { server: notion-mcp, tools: ["delete_page"] }
-workflow:
-  rules: ["State the hypothesis and target metric before proposing an experiment."]
-```
-
-Profiles reference downstream servers **by id only**. Connection details and secrets live separately in [`mcp-profiles.config.json`](./mcp-profiles.config.json) (`${VAR}` placeholders are read from the environment), so profiles stay shareable and secret-free.
-
-## Built-in tools
-
-| Tool | Purpose |
-|---|---|
-| `switch_profile` | Activate a different profile; reshapes the exposed surface. |
-| `list_profiles` | List available profiles and which is active. |
 
 ## Development
 
 ```bash
-npm run dev         # watch mode (tsx)
+npm install
 npm run typecheck   # tsc --noEmit
-npm test            # vitest (unit + e2e with a real mock downstream)
-npm run gen:types   # regenerate src/profile/types.ts from the JSON Schema
+npm test            # vitest (unit + e2e against an in-memory MCP client)
+npm run build       # tsup → dist/
+npm run inspect     # MCP Inspector against the built server
 ```
 
 ## Status & roadmap
 
-**MVP (this repo):** YAML profile spec + JSON Schema, gateway with deny-by-default tool permissions, namespacing, downstream proxying (stdio + streamable HTTP clients), runtime profile switching with `list_changed`, persona/rules/procedures as prompts, inline memory as resources, stdio transport.
+**v1 (this repo):** standalone stdio MCP; four parameters via Mechanism C plus query compilation; decisions-ledger compilation; inspectable trace; two-tier telemetry with near-duplicate-rate baseline collection; ablation eval harness.
 
-**Deferred:** streamable-HTTP *server* transport + per-session active profile; proxying downstream resources/prompts; live `mcp-resource`/`file` memory + a real retrieval engine (retrieval is declarative metadata today); on-demand connect/disconnect on switch; profile inheritance (`extends`); a shareable profile registry; OAuth for remote downstreams.
+**Later:** Cursor-rules / Cline-memory adapters and hosted variant (v2 GA) · `prior_decisions` native parameter, `workflow_stage`, smart `CLAUDE.md` slicing, session anti-loop mechanic GA (v2.1) · multiple retrieval profiles, budget parameters, enterprise source policy (v2.2+).
 
 ## License
 

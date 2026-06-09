@@ -1,18 +1,28 @@
 {
-  "name": "mcp-profiles",
+  "name": "@youdotcom-oss/you-aware",
   "version": "0.1.0",
-  "description": "Portable, reusable operating systems for AI agents — a Model Context Protocol gateway that re-exposes downstream MCP tools according to the active profile.",
+  "description": "Context-aware web search MCP for agent harnesses — reads your CLAUDE.md, compiles project context into agent-shaped queries, and searches through the You.com Search API.",
   "license": "MIT",
   "author": "Brian Sparker <brian@you.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/brainsparker/MCP-Profiles.git"
+  },
+  "homepage": "https://github.com/brainsparker/MCP-Profiles#readme",
+  "bugs": {
+    "url": "https://github.com/brainsparker/MCP-Profiles/issues"
+  },
   "type": "module",
   "bin": {
-    "mcp-profiles": "dist/index.js"
+    "you-aware": "dist/index.js"
   },
   "main": "./dist/index.js",
   "files": [
     "dist",
     "spec",
-    "profiles"
+    "docs",
+    "examples",
+    "eval"
   ],
   "engines": {
     "node": ">=18"
@@ -25,20 +35,15 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "gen:types": "json2ts spec/profile.schema.json -o src/profile/types.ts --bannerComment \"/* AUTO-GENERATED from spec/profile.schema.json — do not edit by hand. Run: npm run gen:types */\"",
-    "inspect": "npm run build && npx @modelcontextprotocol/inspector node dist/index.js --profile growth-pm"
+    "eval": "tsx src/eval/run.ts",
+    "inspect": "npm run build && npx @modelcontextprotocol/inspector node dist/index.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "ajv": "^8.17.1",
-    "ajv-formats": "^3.0.1",
-    "commander": "^12.1.0",
-    "yaml": "^2.6.1",
     "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
-    "json-schema-to-typescript": "^15.0.3",
     "tsup": "^8.3.5",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",

@@ -5,19 +5,18 @@
  */
 
 function ts(): string {
-  // Avoid Date in hot paths is unnecessary here; logging is side-channel only.
   return new Date().toISOString();
 }
 
 export const log = {
   info(msg: string, ...rest: unknown[]): void {
-    process.stderr.write(`[mcp-profiles] ${ts()} ${msg}${fmt(rest)}\n`);
+    process.stderr.write(`[you-aware] ${ts()} ${msg}${fmt(rest)}\n`);
   },
   warn(msg: string, ...rest: unknown[]): void {
-    process.stderr.write(`[mcp-profiles] ${ts()} WARN ${msg}${fmt(rest)}\n`);
+    process.stderr.write(`[you-aware] ${ts()} WARN ${msg}${fmt(rest)}\n`);
   },
   error(msg: string, ...rest: unknown[]): void {
-    process.stderr.write(`[mcp-profiles] ${ts()} ERROR ${msg}${fmt(rest)}\n`);
+    process.stderr.write(`[you-aware] ${ts()} ERROR ${msg}${fmt(rest)}\n`);
   },
 };
 
