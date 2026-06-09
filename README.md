@@ -19,13 +19,16 @@ ranked You.com results + an inspectable trace of exactly what ran
 ## Install
 
 ```bash
-# Claude Code
+# Claude Code — keyless free tier (no key, no account; ~100 queries/day)
+claude mcp add you-aware -- npx -y @youdotcom-oss/you-aware
+
+# Claude Code — with an API key (higher limits + native context parameters)
 claude mcp add you-aware --env YDC_API_KEY=your-key -- npx -y @youdotcom-oss/you-aware
 
 # Cursor (one-click installer) and Cline (marketplace) ship at public GA
 ```
 
-One command. No account creation. No memory setup. The API key is the same You.com Search API key you already have (or grab at [api.you.com](https://api.you.com)). First retrieval works immediately because your harness context is already in place.
+One command. No account creation. No memory setup. First retrieval works immediately because your harness context is already in place. Without a key, searches run through You.com's hosted free tier (the same keyless tier the official You.com MCP uses — search-only, roughly 100 queries/day, context compiled into the query). Setting `YDC_API_KEY` — the same You.com Search API key you may already have, from [you.com/platform](https://you.com/platform) — switches to the direct Search API with higher limits and the native context parameters.
 
 **Data handling, in one sentence:** search queries (received and compiled), populated search parameters, returned result URLs, and outcome signals (e.g. near-duplicate rate) flow to You.com under platform terms to improve agentic retrieval (opt out with `YOU_AWARE_TELEMETRY=off`); your raw `CLAUDE.md`, conversation history, and file paths never leave your machine. Details in [docs/data-handling.md](./docs/data-handling.md).
 
@@ -81,6 +84,7 @@ trace:
   freshness: "stable"
   pre_rank_top_3: [...]
   post_rank_top_3: [...]
+  tier: "keyed"
 ```
 
 ## Configuration
@@ -89,13 +93,14 @@ CLI flag > environment variable > default.
 
 | Flag | Env | Default | Purpose |
 |---|---|---|---|
-| `--api-key` | `YDC_API_KEY` (or `YOU_API_KEY`) | — | You.com Search API key |
+| `--api-key` | `YDC_API_KEY` (or `YOU_API_KEY`) | — | You.com Search API key; without one, the keyless hosted free tier is used |
+| `--hosted-mcp-url` | `YOU_AWARE_HOSTED_MCP_URL` | `https://api.you.com/mcp` | hosted MCP endpoint backing the keyless free tier |
 | `--project-root` | `YOU_AWARE_PROJECT_ROOT` | cwd | where to look for `CLAUDE.md` |
 | `--no-context-read` | `YOU_AWARE_READ_CONTEXT=off` | on | disable the deterministic file-read |
 | `--no-telemetry` | `YOU_AWARE_TELEMETRY=off` | on | opt out of Tier 2 telemetry |
 | `--telemetry-url` | `YOU_AWARE_TELEMETRY_URL` | — | remote Tier 2 sink (events always spool locally while telemetry is on) |
 | `--telemetry-dir` | `YOU_AWARE_TELEMETRY_DIR` | `~/.you-aware` | where the local Tier 2 JSONL spool lives |
-| `--compile-mode` | `YOU_AWARE_COMPILE_MODE` | `auto` | `auto` (native params + query vocabulary) · `operators` (portable `site:`/`-site:`/`after:` compilation) · `native` (params only) |
+| `--compile-mode` | `YOU_AWARE_COMPILE_MODE` | `auto` | `auto` (native params + query vocabulary) · `operators` (portable `site:`/`-site:`/`after:` compilation) · `native` (params only). Forced to `operators` on the keyless free tier, which has no native params |
 | `--fresh-window-days` | `YOU_AWARE_FRESH_WINDOW_DAYS` | `180` | recency window compiled from `freshness: fresh` in operators mode |
 | `--count` | `YOU_AWARE_COUNT` | `10` | results requested per call |
 | `--base-url` | `YOU_API_BASE_URL` | `https://api.ydc-index.io` | Search API endpoint |

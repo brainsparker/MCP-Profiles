@@ -31,6 +31,8 @@ export interface Config {
   freshWindowDays: number;
   /** Result count requested from the Search API. */
   count: number;
+  /** Hosted MCP endpoint used for the keyless free tier (`?profile=free` is appended). */
+  hostedMcpUrl: string;
 }
 
 export const DEFAULT_BASE_URL = "https://api.ydc-index.io";
@@ -84,5 +86,6 @@ export function loadConfig(argv: string[] = [], env: NodeJS.ProcessEnv = process
     compileMode: compileMode as CompileMode,
     freshWindowDays: Number(str("fresh-window-days") ?? env.YOU_AWARE_FRESH_WINDOW_DAYS ?? 180),
     count: Number(str("count") ?? env.YOU_AWARE_COUNT ?? 10),
+    hostedMcpUrl: str("hosted-mcp-url") ?? env.YOU_AWARE_HOSTED_MCP_URL ?? "https://api.you.com/mcp",
   };
 }

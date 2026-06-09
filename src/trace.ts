@@ -17,6 +17,8 @@ export interface Trace {
   freshness: Freshness | "default";
   pre_rank_top_3: string[];
   post_rank_top_3: string[];
+  /** Which retrieval path ran: "free" (hosted keyless tier) or "keyed" (direct Search API). */
+  tier: "free" | "keyed";
 }
 
 const quote = (s: string): string => JSON.stringify(s);
@@ -35,5 +37,6 @@ export function formatTrace(t: Trace): string {
     `  freshness: ${quote(t.freshness)}`,
     `  pre_rank_top_3: ${list(t.pre_rank_top_3)}`,
     `  post_rank_top_3: ${list(t.post_rank_top_3)}`,
+    `  tier: ${quote(t.tier)}`,
   ].join("\n");
 }

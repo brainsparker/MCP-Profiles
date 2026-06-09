@@ -12,6 +12,13 @@ export interface CompileOptions {
   mode: CompileMode;
   now: Date;
   freshWindowDays: number;
+  /**
+   * True when the search backend carries freshness natively even in operators
+   * mode (the hosted free tier's you-search has a native freshness argument,
+   * and its query parser does not document date operators) — suppresses the
+   * after: emission so freshness isn't applied twice or as a literal term.
+   */
+  nativeFreshness?: boolean;
 }
 
 export interface CompiledQuery {
@@ -220,7 +227,11 @@ export function compileQuery(
     const negations = blocked.slice(0, 6).filter((d) => !lowerQuery().includes(`site:${d}`));
     for (const d of negations) query = `${query} -site:${d}`;
     blockedApplied = negations;
-    if (params.freshness === "fresh" && !/(^|\s)(after|before):/.test(lowerQuery())) {
+    if (
+      params.freshness === "fresh" &&
+      !opts.nativeFreshness &&
+      !/(^|\s)(after|before):/.test(lowerQuery())
+    ) {
       const since = new Date(opts.now.getTime() - opts.freshWindowDays * 86_400_000);
       query = `${query} after:${formatDate(since)}`;
     }

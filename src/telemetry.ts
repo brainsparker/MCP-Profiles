@@ -33,6 +33,8 @@ export interface Tier2Event {
   params_model?: SearchParams;
   params_final?: SearchParams;
   compile_mode?: string;
+  /** Retrieval path: "free" (hosted keyless tier) or "keyed" (direct Search API). */
+  tier?: "free" | "keyed";
   /** Whether the deterministic file-read succeeded (no path — paths are Tier 1). */
   context_file_read?: boolean;
   /** Result interactions: what the agent was shown. */

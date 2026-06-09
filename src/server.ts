@@ -18,8 +18,13 @@ import type { SearchClient } from "./youcom.js";
 
 export interface ServerDeps {
   config: Config;
-  /** Null when no API key is configured; searches return a setup error. */
-  client: SearchClient | null;
+  client: SearchClient;
+  /**
+   * "keyed" — direct Search API with the native Product A parameters.
+   * "free"  — keyless hosted MCP tier: operators compilation + client-side
+   *           rank adjustment carry the context instead (no native params).
+   */
+  tier: "free" | "keyed";
   telemetry: Telemetry;
   session: SessionMemory;
   now?: () => Date;
@@ -33,7 +38,10 @@ your values with its deterministic file-read (the file-read is the safety net; y
 conversation-level context the file doesn't know about). If \`search\` returns a decomposition_request, \
 decompose the question into focused single-intent sub-queries and call \`search\` once per sub-query.`;
 
-const SEARCH_DESCRIPTION = `Web search over the You.com Search API, tuned to this project's context. \
+const searchDescription = (tier: "free" | "keyed"): string =>
+  `Web search over ${
+    tier === "keyed" ? "the You.com Search API" : "You.com (hosted free tier)"
+  }, tuned to this project's context. \
 The server reads CLAUDE.md (Mechanism C), merges it with any parameters you supply, compiles the query \
 into lexical form (vocabulary injection, decision-ledger exclusions, source/freshness handling), and \
 returns ranked results with an inspectable trace of exactly what ran. Multi-intent queries return a \
@@ -68,7 +76,7 @@ export function buildServer(deps: ServerDeps): McpServer {
     "search",
     {
       title: "You.com context-aware search",
-      description: SEARCH_DESCRIPTION,
+      description: searchDescription(deps.tier),
       inputSchema: {
         query: z.string().min(1).describe("The search query — natural language or lexical/operator syntax."),
         trusted_sources: z
@@ -108,6 +116,7 @@ export function buildServer(deps: ServerDeps): McpServer {
           ts: now().toISOString(),
           harness: "claude-code",
           query_received: queryReceived,
+          tier: deps.tier,
           near_duplicate: dup.nearDuplicate,
           session_duplicate_rate: session.duplicateRate,
           session_calls: session.calls,
@@ -121,6 +130,7 @@ export function buildServer(deps: ServerDeps): McpServer {
           {},
           [],
           [],
+          deps.tier,
         );
         return {
           content: [
@@ -150,6 +160,9 @@ export function buildServer(deps: ServerDeps): McpServer {
         mode: config.compileMode,
         now: now(),
         freshWindowDays: config.freshWindowDays,
+        // The hosted free tool carries freshness natively; its query parser
+        // documents no date operators, so never emit after: on the free tier.
+        nativeFreshness: deps.tier === "free",
       });
 
       const baseEvent = {
@@ -163,29 +176,12 @@ export function buildServer(deps: ServerDeps): McpServer {
         params_model: prov.model,
         params_final: prov.final,
         compile_mode: config.compileMode,
+        tier: deps.tier,
         context_file_read: fileCtx !== null,
         near_duplicate: dup.nearDuplicate,
         session_duplicate_rate: session.duplicateRate,
         session_calls: session.calls,
       };
-
-      if (!deps.client) {
-        telemetry.record({ type: "error", ...baseEvent, error: "missing_api_key" });
-        const trace = traceFor(queryReceived, compiled.query, compiled, prov.final, [], []);
-        return {
-          isError: true,
-          content: [
-            {
-              type: "text",
-              text:
-                "you-aware is not configured with a You.com Search API key. " +
-                "Set YDC_API_KEY (or pass --api-key) in the MCP server config. " +
-                "Get a key at https://api.you.com — the same key the Search API uses.\n\n" +
-                formatTrace(trace),
-            },
-          ],
-        };
-      }
 
       let hits: SearchHit[];
       try {
@@ -203,14 +199,14 @@ export function buildServer(deps: ServerDeps): McpServer {
           content: [
             {
               type: "text",
-              text: `Search failed: ${message}\n\n${formatTrace(traceFor(queryReceived, compiled.query, compiled, prov.final, [], []))}`,
+              text: `Search failed: ${message}\n\n${formatTrace(traceFor(queryReceived, compiled.query, compiled, prov.final, [], [], deps.tier))}`,
             },
           ],
         };
       }
 
       const ranked = postRank(hits, prov.final.trusted_sources ?? [], prov.final.blocked_sources ?? []);
-      const trace = traceFor(queryReceived, compiled.query, compiled, prov.final, ranked.preRankTop3, ranked.postRankTop3);
+      const trace = traceFor(queryReceived, compiled.query, compiled, prov.final, ranked.preRankTop3, ranked.postRankTop3, deps.tier);
 
       telemetry.record({
         type: "search",
@@ -241,6 +237,7 @@ function traceFor(
   final: SearchParams,
   pre3: string[],
   post3: string[],
+  tier: "free" | "keyed",
 ): Trace {
   return {
     query_received: received,
@@ -252,5 +249,6 @@ function traceFor(
     freshness: final.freshness ?? "default",
     pre_rank_top_3: pre3,
     post_rank_top_3: post3,
+    tier,
   };
 }

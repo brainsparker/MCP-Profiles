@@ -64,6 +64,7 @@ function makeConfig(root: string, tDir: string): Config {
     compileMode: "auto",
     freshWindowDays: 180,
     count: 10,
+    hostedMcpUrl: "https://api.you.com/mcp",
   };
 }
 
@@ -83,6 +84,7 @@ beforeAll(async () => {
   server = buildServer({
     config: makeConfig(projectRoot, telemetryDir),
     client: fake,
+    tier: "keyed",
     telemetry: new Telemetry({ enabled: true, dir: telemetryDir }),
     session: new SessionMemory(),
   });
@@ -125,6 +127,7 @@ describe("you-aware e2e", () => {
     expect(sc.trace.decisions_applied).toEqual(["moment.js rejected → -moment"]);
     expect(sc.trace.freshness).toBe("stable");
     expect(sc.trace.project_context_chars).toBeGreaterThan(0);
+    expect(sc.trace.tier).toBe("keyed");
 
     // Rank-time mechanics: trusted boosted to the front, blocked demoted to the tail.
     expect(sc.results[0]!.url).toContain("react.dev");
@@ -188,6 +191,12 @@ describe("you-aware e2e", () => {
     expect(last.near_duplicate).toBe(true);
     expect(last.params_file).toBeDefined();
     expect(last.params_model).toBeDefined();
+    expect(last.tier).toBe("keyed");
+
+    // The tier rides every event type, decomposition_request included.
+    const decomposition = lines.map((l) => JSON.parse(l)).find((e) => e.type === "decomposition_request");
+    expect(decomposition).toBeDefined();
+    expect(decomposition.tier).toBe("keyed");
   });
 
   it("keeps Tier 1 out of telemetry: no file paths, no raw harness file", () => {
@@ -197,20 +206,41 @@ describe("you-aware e2e", () => {
     expect(raw).not.toContain("## Trusted Sources");
   });
 
-  it("returns a setup error when no API key is configured", async () => {
+  it("runs keyless on the free tier: operators compilation, no native params, tier in the trace", async () => {
+    const freeFake = new FakeClient();
     const keyless = buildServer({
-      config: { ...makeConfig(projectRoot, telemetryDir), apiKey: undefined },
-      client: null,
+      config: { ...makeConfig(projectRoot, telemetryDir), apiKey: undefined, compileMode: "operators" },
+      client: freeFake,
+      tier: "free",
       telemetry: new Telemetry({ enabled: false, dir: telemetryDir }),
       session: new SessionMemory(),
     });
     const c = await connect(keyless);
     const res = (await c.callTool({
       name: "search",
-      arguments: { query: "date parsing" },
+      arguments: { query: "best way to handle date parsing in this project" },
     })) as CallToolResult;
-    expect(res.isError).toBe(true);
-    expect(JSON.stringify(res.content)).toContain("YDC_API_KEY");
+    expect(res.isError).toBeFalsy();
+
+    const sc = res.structuredContent as { kind: string; trace: Record<string, unknown> };
+    expect(sc.kind).toBe("results");
+    expect(sc.trace.tier).toBe("free");
+    // Context reaches the free tier compiled into the query (site: narrowing),
+    // never as native parameters.
+    expect(String(sc.trace.query_compiled)).toContain("(site:react.dev OR site:tanstack.com)");
+    expect(String(sc.trace.query_compiled)).toContain("-site:w3schools.com");
+    const req = freeFake.requests.at(-1)!;
+    expect(req.sendNativeParams).toBe(false);
+
+    // freshness:"fresh" must ride the hosted tool's native argument, never an
+    // after: operator the hosted query parser doesn't document.
+    const freshRes = (await c.callTool({
+      name: "search",
+      arguments: { query: "react 19 changelog highlights", freshness: "fresh" },
+    })) as CallToolResult;
+    const freshSc = freshRes.structuredContent as { trace: Record<string, unknown> };
+    expect(String(freshSc.trace.query_compiled)).not.toContain("after:");
+    expect(freeFake.requests.at(-1)!.params.freshness).toBe("fresh");
     await c.close();
     await keyless.close();
   });

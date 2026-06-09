@@ -1,5 +1,6 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { loadConfig } from "./config.js";
+import { HostedMcpClient } from "./hostedClient.js";
 import { buildServer } from "./server.js";
 import { SessionMemory } from "./session.js";
 import { Telemetry } from "./telemetry.js";
@@ -23,8 +24,20 @@ async function main(): Promise<void> {
   );
   if (!config.telemetry) log.info("telemetry: opted out (Tier 2 disabled)");
   if (!config.readContext) log.info("context read: disabled (model-population only)");
-  if (!config.apiKey) {
-    log.warn("no YDC_API_KEY configured — searches will fail until one is set (https://api.you.com)");
+
+  const tier: "free" | "keyed" = config.apiKey ? "keyed" : "free";
+  let effectiveConfig = config;
+  if (tier === "free") {
+    log.info(
+      "no YDC_API_KEY — running on the You.com free tier (hosted MCP, search-only, ~100 queries/day). " +
+        "Set YDC_API_KEY (https://you.com/platform) for higher limits and native context parameters.",
+    );
+    // The free tool has no Product A parameters: context must reach the query
+    // as operators; freshness rides the tool's native argument instead.
+    if (config.compileMode !== "operators") {
+      log.info(`compile mode "${config.compileMode}" requires native parameters — using "operators" on the free tier`);
+      effectiveConfig = { ...config, compileMode: "operators" };
+    }
   }
 
   const telemetry = new Telemetry({
@@ -35,15 +48,16 @@ async function main(): Promise<void> {
   const session = new SessionMemory();
   const client = config.apiKey
     ? new YouComClient({ apiKey: config.apiKey, baseUrl: config.baseUrl })
-    : null;
+    : new HostedMcpClient({ url: config.hostedMcpUrl, freshWindowDays: config.freshWindowDays });
 
-  const server = buildServer({ config, client, telemetry, session });
+  const server = buildServer({ config: effectiveConfig, client, tier, telemetry, session });
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  log.info(`ready (compile mode: ${config.compileMode}, session: ${session.sessionId})`);
+  log.info(`ready (tier: ${tier}, compile mode: ${effectiveConfig.compileMode}, session: ${session.sessionId})`);
 
   const shutdown = async (): Promise<void> => {
     log.info("shutting down…");
+    if (client instanceof HostedMcpClient) await client.close();
     await server.close();
     process.exit(0);
   };

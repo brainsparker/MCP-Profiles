@@ -1,11 +1,11 @@
 {
-  "$comment": "Example MCP client config (e.g. Claude Desktop's claude_desktop_config.json). In Claude Code, prefer: claude mcp add you-aware --env YDC_API_KEY=your-key -- npx -y @youdotcom-oss/you-aware",
+  "$comment": "Example MCP client config (e.g. Claude Desktop's claude_desktop_config.json). Omit the env block to run on the keyless free tier (~100 queries/day). In Claude Code, prefer: claude mcp add you-aware -- npx -y @youdotcom-oss/you-aware",
   "mcpServers": {
     "you-aware": {
       "command": "npx",
       "args": ["-y", "@youdotcom-oss/you-aware", "--project-root", "/path/to/your/project"],
       "env": {
-        "YDC_API_KEY": "your-you.com-search-api-key"
+        "YDC_API_KEY": "your-you.com-search-api-key (optional — remove for the free tier)"
       }
     }
   }

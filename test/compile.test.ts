@@ -104,6 +104,15 @@ describe("compileQuery (PRD §8.2 / §9.3)", () => {
     expect(c.query).not.toContain("after:");
   });
 
+  it("suppresses after: when the backend carries freshness natively (free tier)", () => {
+    const c = compileQuery("date parsing", { ...params, freshness: "fresh" }, [], {
+      mode: "operators",
+      nativeFreshness: true,
+      ...OPTS,
+    });
+    expect(c.query).not.toContain("after:");
+  });
+
   it("native mode skips vocabulary injection but keeps ledger exclusions (the ledger's only v1 carrier)", () => {
     const c = compileQuery(
       "best way to handle date parsing in this project",

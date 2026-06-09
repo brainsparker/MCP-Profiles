@@ -1,6 +1,6 @@
 # Data handling
 
-`you-aware` has a two-tier data posture, disclosed at install. The source code in this repository is the auditable boundary — every byte that leaves the process goes through [`src/youcom.ts`](../src/youcom.ts) (the search call) or [`src/telemetry.ts`](../src/telemetry.ts) (Tier 2 events).
+`you-aware` has a two-tier data posture, disclosed at install. The source code in this repository is the auditable boundary — every byte that leaves the process goes through [`src/youcom.ts`](../src/youcom.ts) (the keyed search call), [`src/hostedClient.ts`](../src/hostedClient.ts) (the keyless free-tier search, via You.com's hosted MCP endpoint), or [`src/telemetry.ts`](../src/telemetry.ts) (Tier 2 events).
 
 ## Tier 1 — never leaves the machine
 
@@ -25,6 +25,7 @@ Tier 2 is the substrate signal loop and a design goal, not telemetry exhaust: it
 
 - `YOU_AWARE_READ_CONTEXT=off` (or `--no-context-read`) disables `CLAUDE.md` reading entirely; the model populates parameters exclusively.
 - The search call itself always carries the compiled query and (in `auto`/`native` compile modes) the populated parameters — that *is* the product. In `operators` mode, context reaches You.com only as compiled query text.
+- **Keyless free tier:** without `YDC_API_KEY`, searches route through You.com's hosted MCP endpoint (`api.you.com/mcp?profile=free`) instead of the Search API. The same boundary holds — only the compiled query (plus a freshness window) goes over the wire; the free tool has no other context parameters, and Tier 2 telemetry behaves identically.
 
 ## First ship is stdio
 
