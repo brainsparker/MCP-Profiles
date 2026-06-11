@@ -2,10 +2,11 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 /**
- * v1 reads CLAUDE.md only (PRD §8.4: Cursor-rules / Cline-memory adapters land
- * at v2 GA). Order matters: the first match wins.
+ * v1 reads AGENTS.md (the open agent-instructions convention) with CLAUDE.md
+ * as a fallback (PRD §8.4: Cursor-rules / Cline-memory adapters land at v2
+ * GA). Order matters: within each directory the first match wins.
  */
-const CONTEXT_FILE_NAMES = ["CLAUDE.md"];
+const CONTEXT_FILE_NAMES = ["AGENTS.md", "CLAUDE.md"];
 
 /**
  * Walk up from `start` looking for a harness-context file, the way harnesses

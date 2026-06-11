@@ -4,7 +4,7 @@
 
 ## Tier 1 — never leaves the machine
 
-- Raw `CLAUDE.md` and rules-file contents
+- Raw `AGENTS.md` / `CLAUDE.md` and rules-file contents
 - Conversation history
 - File paths
 
@@ -23,10 +23,10 @@ Tier 2 is the substrate signal loop and a design goal, not telemetry exhaust: it
 
 ## Additional controls
 
-- `YOU_AWARE_READ_CONTEXT=off` (or `--no-context-read`) disables `CLAUDE.md` reading entirely; the model populates parameters exclusively.
+- `YOU_AWARE_READ_CONTEXT=off` (or `--no-context-read`) disables context-file reading (`AGENTS.md` / `CLAUDE.md`) entirely; the model populates parameters exclusively.
 - The search call itself always carries the compiled query and (in `auto`/`native` compile modes) the populated parameters — that *is* the product. In `operators` mode, context reaches You.com only as compiled query text.
 - **Keyless free tier:** without `YDC_API_KEY`, searches route through You.com's hosted MCP endpoint (`api.you.com/mcp?profile=free`) instead of the Search API. The same boundary holds — only the compiled query (plus a freshness window) goes over the wire; the free tool has no other context parameters, and Tier 2 telemetry behaves identically.
 
 ## First ship is stdio
 
-The server runs locally over stdio inside your harness. A hosted variant ships later with its filesystem limitation called out explicitly (a hosted MCP cannot read your `CLAUDE.md`; Mechanism C reduces to model-population only).
+The server runs locally over stdio inside your harness. A hosted variant ships later with its filesystem limitation called out explicitly (a hosted MCP cannot read your `AGENTS.md`; Mechanism C reduces to model-population only).

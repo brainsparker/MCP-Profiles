@@ -2,14 +2,14 @@
 
 **Context-aware web search for AI agents — search that already knows what you're working on.**
 
-`you-aware` is an opinionated, installable [MCP](https://modelcontextprotocol.io) server that makes web search measurably better when the caller is an AI agent. It delivers the You.com Search API's context-aware parameters into the agent harnesses developers already use (Claude Code, Cursor, Cline) by reading the harness context the developer has already written — `CLAUDE.md` — and compiling it into the lexical, operator-heavy query language production agents actually speak.
+`you-aware` is an opinionated, installable [MCP](https://modelcontextprotocol.io) server that makes web search measurably better when the caller is an AI agent. It delivers the You.com Search API's context-aware parameters into the agent harnesses developers already use by reading the context the developer has already written — the project's `AGENTS.md` (or `CLAUDE.md`) — and compiling it into the lexical, operator-heavy query language production agents actually speak.
 
 Your agent's harness already knows your trusted sources, your prior decisions, and your stack. The search API call should reflect all of it. With `you-aware`, it does — without configuring a second memory system.
 
 ```
 "best way to handle date parsing in this project"
         │
-        ▼  reads CLAUDE.md · merges model-supplied context · compiles
+        ▼  reads AGENTS.md · merges model-supplied context · compiles
 typescript date parsing "date-fns" -moment        + trusted/blocked/freshness params
         │
         ▼
@@ -18,19 +18,38 @@ ranked You.com results + an inspectable trace of exactly what ran
 
 ## Install
 
-```bash
-# Claude Code — keyless free tier (no key, no account; ~100 queries/day)
-claude mcp add you-aware -- npx -y @youdotcom-oss/you-aware
+The server is a single `npx`-runnable stdio binary — add it to any MCP client. In your `opencode.json`:
 
-# Claude Code — with an API key (higher limits + native context parameters)
-claude mcp add you-aware --env YDC_API_KEY=your-key -- npx -y @youdotcom-oss/you-aware
-
-# Cursor (one-click installer) and Cline (marketplace) ship at public GA
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "you-aware": {
+      "type": "local",
+      "command": ["npx", "-y", "@youdotcom-oss/you-aware"],
+      "enabled": true
+    }
+  }
+}
 ```
 
-One command. No account creation. No memory setup. First retrieval works immediately because your harness context is already in place. Without a key, searches run through You.com's hosted free tier (the same keyless tier the official You.com MCP uses — search-only, roughly 100 queries/day, context compiled into the query). Setting `YDC_API_KEY` — the same You.com Search API key you may already have, from [you.com/platform](https://you.com/platform) — switches to the direct Search API with higher limits and the native context parameters.
+In Claude Code:
 
-**Data handling, in one sentence:** search queries (received and compiled), populated search parameters, returned result URLs, and outcome signals (e.g. near-duplicate rate) flow to You.com under platform terms to improve agentic retrieval (opt out with `YOU_AWARE_TELEMETRY=off`); your raw `CLAUDE.md`, conversation history, and file paths never leave your machine. Details in [docs/data-handling.md](./docs/data-handling.md).
+```bash
+claude mcp add you-aware -- npx -y @youdotcom-oss/you-aware
+```
+
+Full client config examples (including the keyed variants) are in [examples/client-config/](./examples/client-config).
+
+One config block. No account creation. No memory setup. First retrieval works immediately because your project's `AGENTS.md` is already in place. Without a key, searches run through You.com's hosted free tier (the same keyless tier the official You.com MCP uses — search-only, roughly 100 queries/day, context compiled into the query). Setting `YDC_API_KEY` — the same You.com Search API key you may already have, from [you.com/platform](https://you.com/platform) — switches to the direct Search API with higher limits and the native context parameters. Add it to the server entry:
+
+```json
+"environment": { "YDC_API_KEY": "{env:YDC_API_KEY}" }
+```
+
+(Clients that use the `mcpServers` config shape call this block `"env"` and don't substitute `{env:…}` — put the key itself there.)
+
+**Data handling, in one sentence:** search queries (received and compiled), populated search parameters, returned result URLs, and outcome signals (e.g. near-duplicate rate) flow to You.com under platform terms to improve agentic retrieval (opt out with `YOU_AWARE_TELEMETRY=off`); your raw `AGENTS.md` / `CLAUDE.md`, conversation history, and file paths never leave your machine. Details in [docs/data-handling.md](./docs/data-handling.md).
 
 ## What it does
 
@@ -47,8 +66,8 @@ All parameters are optional. With everything omitted you get exactly today's Sea
 
 ### Parameter population (Mechanism C)
 
-1. At call time, the server reads your project's `CLAUDE.md` (walking up from the project root).
-2. It parses the [documented section conventions](./docs/context-conventions.md) — `## Trusted Sources`, `## Blocked Sources`, `## Decisions`, `## Project Context`, `## Freshness` — into ground-truth parameter values. No structured config required: any `CLAUDE.md` works (top-of-file content becomes `project_context`).
+1. At call time, the server reads your project's `AGENTS.md` — or `CLAUDE.md` as a fallback — walking up from the project root.
+2. It parses the [documented section conventions](./docs/context-conventions.md) — `## Trusted Sources`, `## Blocked Sources`, `## Decisions`, `## Project Context`, `## Freshness` — into ground-truth parameter values. No structured config required: any `AGENTS.md` works (top-of-file content becomes `project_context`).
 3. The calling model may *also* populate the same parameters from its working context.
 4. The final API call uses whichever source produces the higher-quality parameter, with the deterministic file-read as the safety net: source lists are unioned, and a model-supplied `project_context` (which can fold in conversation-level context the file can't see) overrides the file-derived one.
 5. Both populated values are logged for ongoing quality measurement.
@@ -95,7 +114,8 @@ CLI flag > environment variable > default.
 |---|---|---|---|
 | `--api-key` | `YDC_API_KEY` (or `YOU_API_KEY`) | — | You.com Search API key; without one, the keyless hosted free tier is used |
 | `--hosted-mcp-url` | `YOU_AWARE_HOSTED_MCP_URL` | `https://api.you.com/mcp` | hosted MCP endpoint backing the keyless free tier |
-| `--project-root` | `YOU_AWARE_PROJECT_ROOT` | cwd | where to look for `CLAUDE.md` |
+| `--project-root` | `YOU_AWARE_PROJECT_ROOT` | cwd | where to look for `AGENTS.md` / `CLAUDE.md` |
+| `--harness` | `YOU_AWARE_HARNESS` | `unknown` | harness identifier stamped on Tier 2 telemetry events |
 | `--no-context-read` | `YOU_AWARE_READ_CONTEXT=off` | on | disable the deterministic file-read |
 | `--no-telemetry` | `YOU_AWARE_TELEMETRY=off` | on | opt out of Tier 2 telemetry |
 | `--telemetry-url` | `YOU_AWARE_TELEMETRY_URL` | — | remote Tier 2 sink (events always spool locally while telemetry is on) |
@@ -105,7 +125,7 @@ CLI flag > environment variable > default.
 | `--count` | `YOU_AWARE_COUNT` | `10` | results requested per call |
 | `--base-url` | `YOU_API_BASE_URL` | `https://api.ydc-index.io` | Search API endpoint |
 
-A sample `CLAUDE.md` showing all section conventions is in [examples/CLAUDE.md](./examples/CLAUDE.md); a Claude Desktop config in [examples/client-config/claude-desktop.json](./examples/client-config/claude-desktop.json).
+A sample `AGENTS.md` showing all section conventions is in [examples/AGENTS.md](./examples/AGENTS.md); client configs in [examples/client-config/](./examples/client-config).
 
 ## Evaluation
 
@@ -129,7 +149,7 @@ npm run inspect     # MCP Inspector against the built server
 
 **v1 (this repo):** standalone stdio MCP; four parameters via Mechanism C plus query compilation; decisions-ledger compilation; inspectable trace; two-tier telemetry with near-duplicate-rate baseline collection; ablation eval harness.
 
-**Later:** Cursor-rules / Cline-memory adapters and hosted variant (v2 GA) · `prior_decisions` native parameter, `workflow_stage`, smart `CLAUDE.md` slicing, session anti-loop mechanic GA (v2.1) · multiple retrieval profiles, budget parameters, enterprise source policy (v2.2+).
+**Later:** Cursor-rules / Cline-memory adapters and hosted variant (v2 GA) · `prior_decisions` native parameter, `workflow_stage`, smart context-file slicing, session anti-loop mechanic GA (v2.1) · multiple retrieval profiles, budget parameters, enterprise source policy (v2.2+).
 
 ## License
 

@@ -1,6 +1,6 @@
-# CLAUDE.md section conventions
+# Context file section conventions
 
-`you-aware` reads your project's `CLAUDE.md` at call time and parses these section conventions into ground-truth search parameters. **None of them are required** — any `CLAUDE.md` delivers value (without an explicit `## Project Context` section, the top of the file is used, truncated to 4 KB). The conventions just make the population deterministic and precise.
+`you-aware` reads your project's `AGENTS.md` (or `CLAUDE.md`, as a fallback) at call time and parses these section conventions into ground-truth search parameters. **None of them are required** — any `AGENTS.md` delivers value (without an explicit `## Project Context` section, the top of the file is used, truncated to 4 KB). The conventions just make the population deterministic and precise.
 
 Headings are matched case-insensitively at any heading level.
 
@@ -58,6 +58,6 @@ stable
 
 ## Notes
 
-- v1 reads `CLAUDE.md` only; Cursor-rules and Cline-memory adapters ship at v2 GA.
-- Without an explicit `## Project Context` section, the file head is used verbatim (naive truncation — smart slicing is planned for v2.1). If your `CLAUDE.md` is long, adding the explicit section is the highest-leverage convention to adopt.
+- v1 reads `AGENTS.md` and `CLAUDE.md` only (walking up from the project root; within a directory, `AGENTS.md` wins). Cursor-rules and Cline-memory adapters ship at v2 GA.
+- Without an explicit `## Project Context` section, the file head is used verbatim (naive truncation — smart slicing is planned for v2.1). If your context file is long, adding the explicit section is the highest-leverage convention to adopt.
 - Opt out of file reading entirely with `YOU_AWARE_READ_CONTEXT=off`; the model can still populate every parameter per call.

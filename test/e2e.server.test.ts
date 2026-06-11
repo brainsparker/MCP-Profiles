@@ -12,7 +12,7 @@ import { Telemetry } from "../src/telemetry.js";
 import type { SearchHit } from "../src/types.js";
 import type { SearchClient, SearchRequest } from "../src/youcom.js";
 
-const CLAUDE_MD = `# Test Project
+const AGENTS_MD = `# Test Project
 
 ## Trusted Sources
 - react.dev
@@ -59,6 +59,7 @@ function makeConfig(root: string, tDir: string): Config {
     baseUrl: "https://api.example.test",
     projectRoot: root,
     readContext: true,
+    harness: "unknown",
     telemetry: true,
     telemetryDir: tDir,
     compileMode: "auto",
@@ -79,7 +80,7 @@ async function connect(s: ReturnType<typeof buildServer>): Promise<Client> {
 beforeAll(async () => {
   projectRoot = mkdtempSync(join(tmpdir(), "you-aware-project-"));
   telemetryDir = mkdtempSync(join(tmpdir(), "you-aware-events-"));
-  writeFileSync(join(projectRoot, "CLAUDE.md"), CLAUDE_MD);
+  writeFileSync(join(projectRoot, "AGENTS.md"), AGENTS_MD);
   fake = new FakeClient();
   server = buildServer({
     config: makeConfig(projectRoot, telemetryDir),
@@ -201,9 +202,47 @@ describe("you-aware e2e", () => {
 
   it("keeps Tier 1 out of telemetry: no file paths, no raw harness file", () => {
     const raw = readFileSync(join(telemetryDir, "telemetry.jsonl"), "utf8");
+    expect(raw).not.toContain("AGENTS.md");
     expect(raw).not.toContain("CLAUDE.md");
     expect(raw).not.toContain(projectRoot);
     expect(raw).not.toContain("## Trusted Sources");
+  });
+
+  it("falls back to CLAUDE.md when no AGENTS.md exists", async () => {
+    const root = mkdtempSync(join(tmpdir(), "you-aware-fallback-"));
+    writeFileSync(join(root, "CLAUDE.md"), AGENTS_MD);
+    const fallbackFake = new FakeClient();
+    const s = buildServer({
+      config: makeConfig(root, telemetryDir),
+      client: fallbackFake,
+      tier: "keyed",
+      telemetry: new Telemetry({ enabled: false, dir: telemetryDir }),
+      session: new SessionMemory(),
+    });
+    const c = await connect(s);
+    await c.callTool({ name: "search", arguments: { query: "react query caching strategy" } });
+    expect(fallbackFake.requests.at(-1)!.params.trusted_sources).toEqual(["react.dev", "tanstack.com"]);
+    await c.close();
+    await s.close();
+  });
+
+  it("prefers AGENTS.md over CLAUDE.md when both exist", async () => {
+    const root = mkdtempSync(join(tmpdir(), "you-aware-both-"));
+    writeFileSync(join(root, "AGENTS.md"), "## Trusted Sources\n- agents.example.com\n");
+    writeFileSync(join(root, "CLAUDE.md"), "## Trusted Sources\n- claude.example.com\n");
+    const bothFake = new FakeClient();
+    const s = buildServer({
+      config: makeConfig(root, telemetryDir),
+      client: bothFake,
+      tier: "keyed",
+      telemetry: new Telemetry({ enabled: false, dir: telemetryDir }),
+      session: new SessionMemory(),
+    });
+    const c = await connect(s);
+    await c.callTool({ name: "search", arguments: { query: "react query caching strategy" } });
+    expect(bothFake.requests.at(-1)!.params.trusted_sources).toEqual(["agents.example.com"]);
+    await c.close();
+    await s.close();
   });
 
   it("runs keyless on the free tier: operators compilation, no native params, tier in the trace", async () => {

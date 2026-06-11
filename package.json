@@ -1,7 +1,7 @@
 {
   "name": "@youdotcom-oss/you-aware",
   "version": "0.1.0",
-  "description": "Context-aware web search MCP for agent harnesses — reads your CLAUDE.md, compiles project context into agent-shaped queries, and searches through the You.com Search API.",
+  "description": "Context-aware web search MCP for agent harnesses — reads your project's AGENTS.md, compiles project context into agent-shaped queries, and searches through the You.com Search API.",
   "license": "MIT",
   "author": "Brian Sparker <brian@you.com>",
   "repository": {

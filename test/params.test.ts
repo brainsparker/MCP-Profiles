@@ -9,7 +9,7 @@ const fileCtx: HarnessContext = {
   decisions: [],
   projectContext: "TypeScript app using date-fns.",
   freshness: "stable",
-  filePath: "/tmp/CLAUDE.md",
+  filePath: "/tmp/AGENTS.md",
 };
 
 describe("populateParams (Mechanism C merge)", () => {

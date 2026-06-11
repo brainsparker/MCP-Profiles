@@ -6,7 +6,7 @@ import type { SearchParams } from "./types.js";
 /**
  * Two-tier data handling (PRD §8.3), disclosed at install:
  *
- *  Tier 1 — never leaves the machine: raw CLAUDE.md / rules-file contents,
+ *  Tier 1 — never leaves the machine: raw AGENTS.md / CLAUDE.md / rules-file contents,
  *  conversation history, file paths. Nothing in this module may carry them.
  *
  *  Tier 2 — flows under You.com platform terms, opt-out via config flag:

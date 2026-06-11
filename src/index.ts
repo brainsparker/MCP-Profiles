@@ -19,7 +19,7 @@ async function main(): Promise<void> {
   log.info(
     `you-aware v${VERSION} — search queries (received and compiled), populated search parameters, ` +
       `returned result URLs, and outcome signals (e.g. near-duplicate rate) flow to You.com under ` +
-      `platform terms to improve agentic retrieval (opt out: YOU_AWARE_TELEMETRY=off); raw CLAUDE.md, ` +
+      `platform terms to improve agentic retrieval (opt out: YOU_AWARE_TELEMETRY=off); raw AGENTS.md/CLAUDE.md, ` +
       `conversation history, and file paths never leave this machine.`,
   );
   if (!config.telemetry) log.info("telemetry: opted out (Tier 2 disabled)");

@@ -19,8 +19,10 @@ export interface Config {
   baseUrl: string;
   /** Where Mechanism C looks for the harness-context file (walks up from here). */
   projectRoot: string;
-  /** §8.3: developers can opt out of CLAUDE.md reading entirely (model-population only). */
+  /** §8.3: developers can opt out of context-file reading entirely (model-population only). */
   readContext: boolean;
+  /** Harness identifier stamped on Tier 2 events (e.g. set by an installer); never auto-detected. */
+  harness: string;
   /** §8.3 Tier 2 opt-out flag. */
   telemetry: boolean;
   /** Remote Tier 2 sink. Events always spool locally (JSONL) while telemetry is on. */
@@ -80,6 +82,7 @@ export function loadConfig(argv: string[] = [], env: NodeJS.ProcessEnv = process
     baseUrl: str("base-url") ?? env.YOU_API_BASE_URL ?? DEFAULT_BASE_URL,
     projectRoot: str("project-root") ?? env.YOU_AWARE_PROJECT_ROOT ?? process.cwd(),
     readContext: args.has("no-context-read") ? false : (envFlag(env.YOU_AWARE_READ_CONTEXT) ?? true),
+    harness: str("harness") ?? env.YOU_AWARE_HARNESS ?? "unknown",
     telemetry: args.has("no-telemetry") ? false : (envFlag(env.YOU_AWARE_TELEMETRY) ?? true),
     telemetryUrl: str("telemetry-url") ?? env.YOU_AWARE_TELEMETRY_URL,
     telemetryDir: str("telemetry-dir") ?? env.YOU_AWARE_TELEMETRY_DIR ?? join(homedir(), ".you-aware"),

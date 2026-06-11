@@ -9,7 +9,7 @@ const event = (over: Partial<Tier2Event> = {}): Tier2Event => ({
   session_id: "s-1",
   seq: 1,
   ts: "2026-06-09T00:00:00.000Z",
-  harness: "claude-code",
+  harness: "unknown",
   query_received: "date parsing",
   query_compiled: 'typescript date parsing "date-fns" -moment',
   params_file: { trusted_sources: ["react.dev"] },

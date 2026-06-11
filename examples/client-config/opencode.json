@@ -1,0 +1,14 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "you-aware": {
+      "type": "local",
+      "command": ["npx", "-y", "@youdotcom-oss/you-aware"],
+      "enabled": true,
+      "timeout": 60000,
+      "environment": {
+        "YDC_API_KEY": "{env:YDC_API_KEY}"
+      }
+    }
+  }
+}

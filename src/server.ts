@@ -30,8 +30,8 @@ export interface ServerDeps {
   now?: () => Date;
 }
 
-const SERVER_INSTRUCTIONS = `you-aware makes web search context-aware: it reads the project's CLAUDE.md \
-(trusted/blocked sources, decisions ledger, project context) and compiles that context into the query \
+const SERVER_INSTRUCTIONS = `you-aware makes web search context-aware: it reads the project's AGENTS.md \
+(or CLAUDE.md — trusted/blocked sources, decisions ledger, project context) and compiles that context into the query \
 and retrieval parameters. Call \`search\` for technical research. You may also populate trusted_sources, \
 blocked_sources, project_context, and freshness yourself from your working context — the server merges \
 your values with its deterministic file-read (the file-read is the safety net; your values can add \
@@ -42,7 +42,7 @@ const searchDescription = (tier: "free" | "keyed"): string =>
   `Web search over ${
     tier === "keyed" ? "the You.com Search API" : "You.com (hosted free tier)"
   }, tuned to this project's context. \
-The server reads CLAUDE.md (Mechanism C), merges it with any parameters you supply, compiles the query \
+The server reads the project's AGENTS.md or CLAUDE.md (Mechanism C), merges it with any parameters you supply, compiles the query \
 into lexical form (vocabulary injection, decision-ledger exclusions, source/freshness handling), and \
 returns ranked results with an inspectable trace of exactly what ran. Multi-intent queries return a \
 decomposition_request instead of results — split them and search per sub-query.`;
@@ -82,17 +82,17 @@ export function buildServer(deps: ServerDeps): McpServer {
         trusted_sources: z
           .array(z.string())
           .optional()
-          .describe("Domains to boost in ranking (e.g. react.dev). Merged with the project's CLAUDE.md list."),
+          .describe("Domains to boost in ranking (e.g. react.dev). Merged with the project's context-file list."),
         blocked_sources: z
           .array(z.string())
           .optional()
-          .describe("Domains to demote or filter (e.g. w3schools.com). Merged with the project's CLAUDE.md list."),
+          .describe("Domains to demote or filter (e.g. w3schools.com). Merged with the project's context-file list."),
         project_context: z
           .string()
           .optional()
           .describe(
             "Free-text description of the current project, codebase, or working context (max 4 KB; truncated beyond). " +
-              "Overrides the CLAUDE.md-derived context when supplied.",
+              "Overrides the context-file-derived context when supplied.",
           ),
         freshness: z
           .enum(["fresh", "stable", "any"])
@@ -114,7 +114,7 @@ export function buildServer(deps: ServerDeps): McpServer {
           session_id: session.sessionId,
           seq: session.calls,
           ts: now().toISOString(),
-          harness: "claude-code",
+          harness: config.harness,
           query_received: queryReceived,
           tier: deps.tier,
           near_duplicate: dup.nearDuplicate,

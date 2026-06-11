@@ -83,7 +83,7 @@ describe("parseDecisionLine", () => {
 });
 
 describe("parseHarnessContext", () => {
-  const ctx = parseHarnessContext(FIXTURE, "/tmp/CLAUDE.md");
+  const ctx = parseHarnessContext(FIXTURE, "/tmp/AGENTS.md");
 
   it("parses trusted sources with normalization, skipping junk", () => {
     expect(ctx.trustedSources).toEqual(["react.dev", "tanstack.com", "nodejs.org"]);
@@ -103,14 +103,14 @@ describe("parseHarnessContext", () => {
 
   it("falls back to top-of-file truncation when no Project Context section exists", () => {
     const noSection = "# Big\n\n" + "x".repeat(PROJECT_CONTEXT_MAX_BYTES * 2);
-    const c = parseHarnessContext(noSection, "/tmp/CLAUDE.md");
+    const c = parseHarnessContext(noSection, "/tmp/AGENTS.md");
     expect(c.projectContext!.length).toBe(PROJECT_CONTEXT_MAX_BYTES);
     expect(c.projectContext!.startsWith("# Big")).toBe(true);
   });
 
   it("caps project_context by UTF-8 bytes, not UTF-16 code units (§8.3 privacy bound)", () => {
     const multibyte = "## Project Context\n" + "é".repeat(PROJECT_CONTEXT_MAX_BYTES);
-    const c = parseHarnessContext(multibyte, "/tmp/CLAUDE.md");
+    const c = parseHarnessContext(multibyte, "/tmp/AGENTS.md");
     expect(Buffer.byteLength(c.projectContext!, "utf8")).toBeLessThanOrEqual(PROJECT_CONTEXT_MAX_BYTES);
     expect(c.projectContext!.length).toBe(PROJECT_CONTEXT_MAX_BYTES / 2);
   });
