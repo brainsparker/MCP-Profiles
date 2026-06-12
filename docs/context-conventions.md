@@ -58,6 +58,7 @@ stable
 
 ## Notes
 
-- v1 reads `AGENTS.md` and `CLAUDE.md` only (walking up from the project root; within a directory, `AGENTS.md` wins). Cursor-rules and Cline-memory adapters ship at v2 GA.
+- v1 reads `AGENTS.md` and `CLAUDE.md` only (walking up from the project root, up to 6 levels; the nearest file wins, and within a directory `AGENTS.md` wins). Cursor-rules and Cline-memory adapters ship at v2 GA.
 - Without an explicit `## Project Context` section, the file head is used verbatim (naive truncation — smart slicing is planned for v2.1). If your context file is long, adding the explicit section is the highest-leverage convention to adopt.
 - Opt out of file reading entirely with `YOU_AWARE_READ_CONTEXT=off`; the model can still populate every parameter per call.
+- The companion skill in [`skills/you-aware/`](../skills/you-aware) teaches agents these conventions, including when to write them back.

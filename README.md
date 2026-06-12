@@ -27,7 +27,9 @@ The server is a single `npx`-runnable stdio binary — add it to any MCP client.
     "you-aware": {
       "type": "local",
       "command": ["npx", "-y", "@youdotcom-oss/you-aware"],
-      "enabled": true
+      "enabled": true,
+      "timeout": 60000,
+      "environment": { "YOU_AWARE_HARNESS": "opencode" }
     }
   }
 }
@@ -41,15 +43,25 @@ claude mcp add you-aware -- npx -y @youdotcom-oss/you-aware
 
 Full client config examples (including the keyed variants) are in [examples/client-config/](./examples/client-config).
 
-One config block. No account creation. No memory setup. First retrieval works immediately because your project's `AGENTS.md` is already in place. Without a key, searches run through You.com's hosted free tier (the same keyless tier the official You.com MCP uses — search-only, roughly 100 queries/day, context compiled into the query). Setting `YDC_API_KEY` — the same You.com Search API key you may already have, from [you.com/platform](https://you.com/platform) — switches to the direct Search API with higher limits and the native context parameters. Add it to the server entry:
+One config block (or one command). No account creation. No memory setup. First retrieval works immediately because your project's `AGENTS.md` (or `CLAUDE.md`) is already in place. Without a key, searches run through You.com's hosted free tier (the same keyless tier the official You.com MCP uses — search-only, roughly 100 queries/day, context compiled into the query). Setting `YDC_API_KEY` — the same You.com Search API key you may already have, from [you.com/platform](https://you.com/platform) — switches to the direct Search API with higher limits and the native context parameters. Add it to the `environment` block:
 
 ```json
-"environment": { "YDC_API_KEY": "{env:YDC_API_KEY}" }
+"YDC_API_KEY": "{env:YDC_API_KEY}"
 ```
 
-(Clients that use the `mcpServers` config shape call this block `"env"` and don't substitute `{env:…}` — put the key itself there.)
+(An `{env:…}` reference that's unset in your shell substitutes to an empty string — the server treats it as absent and stays on the free tier. Clients that use the `mcpServers` config shape call this block `"env"` and don't substitute `{env:…}` — put the key itself there. The generous `timeout` covers `npx`'s first-run package download.)
 
 **Data handling, in one sentence:** search queries (received and compiled), populated search parameters, returned result URLs, and outcome signals (e.g. near-duplicate rate) flow to You.com under platform terms to improve agentic retrieval (opt out with `YOU_AWARE_TELEMETRY=off`); your raw `AGENTS.md` / `CLAUDE.md`, conversation history, and file paths never leave your machine. Details in [docs/data-handling.md](./docs/data-handling.md).
+
+### Companion skill
+
+[`skills/you-aware/`](./skills/you-aware) is an [Agent Skill](https://agentskills.io) that teaches an agent both halves of the loop — when and how to call `search`, and how to keep the `AGENTS.md` sections current. Install it by copying the folder into your client's skills directory — project-level `.opencode/skills/`, `.claude/skills/`, or `.agents/skills/`, or their global equivalents (`~/.config/opencode/skills/`, `~/.claude/skills/`, `~/.agents/skills/`):
+
+```bash
+cp -r node_modules/@youdotcom-oss/you-aware/skills/you-aware .opencode/skills/
+```
+
+(or copy it straight from this repo). The skill body loads only when relevant — its at-rest cost is one description line.
 
 ## What it does
 
@@ -66,7 +78,7 @@ All parameters are optional. With everything omitted you get exactly today's Sea
 
 ### Parameter population (Mechanism C)
 
-1. At call time, the server reads your project's `AGENTS.md` — or `CLAUDE.md` as a fallback — walking up from the project root.
+1. At call time, the server reads your project's `AGENTS.md` — or `CLAUDE.md` as a fallback — walking up from the project root (the nearest file wins; within a directory, `AGENTS.md` wins).
 2. It parses the [documented section conventions](./docs/context-conventions.md) — `## Trusted Sources`, `## Blocked Sources`, `## Decisions`, `## Project Context`, `## Freshness` — into ground-truth parameter values. No structured config required: any `AGENTS.md` works (top-of-file content becomes `project_context`).
 3. The calling model may *also* populate the same parameters from its working context.
 4. The final API call uses whichever source produces the higher-quality parameter, with the deterministic file-read as the safety net: source lists are unioned, and a model-supplied `project_context` (which can fold in conversation-level context the file can't see) overrides the file-derived one.
@@ -147,7 +159,7 @@ npm run inspect     # MCP Inspector against the built server
 
 ## Status & roadmap
 
-**v1 (this repo):** standalone stdio MCP; four parameters via Mechanism C plus query compilation; decisions-ledger compilation; inspectable trace; two-tier telemetry with near-duplicate-rate baseline collection; ablation eval harness.
+**v1 (this repo):** standalone stdio MCP; four parameters via Mechanism C plus query compilation; decisions-ledger compilation; inspectable trace; two-tier telemetry with near-duplicate-rate baseline collection; ablation eval harness; companion Agent Skill.
 
 **Later:** Cursor-rules / Cline-memory adapters and hosted variant (v2 GA) · `prior_decisions` native parameter, `workflow_stage`, smart context-file slicing, session anti-loop mechanic GA (v2.1) · multiple retrieval profiles, budget parameters, enterprise source policy (v2.2+).
 

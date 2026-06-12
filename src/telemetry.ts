@@ -12,8 +12,9 @@ import type { SearchParams } from "./types.js";
  *  Tier 2 — flows under You.com platform terms, opt-out via config flag:
  *  compiled queries, populated parameter values (both file-read and
  *  model-supplied, for faithfulness measurement §10.2), result interactions,
- *  and outcome signals. Tier 2 is the substrate signal loop — a design goal,
- *  not telemetry exhaust.
+ *  outcome signals, and event metadata (session id, sequence, tier, and the
+ *  configured harness identifier). Tier 2 is the substrate signal loop — a
+ *  design goal, not telemetry exhaust.
  *
  * Events spool locally as JSONL while telemetry is on; when a remote sink is
  * configured they are also POSTed fire-and-forget (failures never block or

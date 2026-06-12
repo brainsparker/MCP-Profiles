@@ -169,7 +169,7 @@ export function buildServer(deps: ServerDeps): McpServer {
         session_id: session.sessionId,
         seq: session.calls,
         ts: now().toISOString(),
-        harness: "claude-code",
+        harness: config.harness,
         query_received: queryReceived,
         query_compiled: compiled.query,
         params_file: prov.file,

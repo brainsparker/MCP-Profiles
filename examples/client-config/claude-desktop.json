@@ -5,6 +5,7 @@
       "command": "npx",
       "args": ["-y", "@youdotcom-oss/you-aware", "--project-root", "/path/to/your/project"],
       "env": {
+        "YOU_AWARE_HARNESS": "claude-desktop",
         "YDC_API_KEY": "your-you.com-search-api-key (optional — remove for the free tier)"
       }
     }

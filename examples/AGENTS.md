@@ -1,6 +1,6 @@
 # Example project
 
-A sample `AGENTS.md` showing every section convention `you-aware` reads (see docs/context-conventions.md). The same conventions work in a `CLAUDE.md`, which is read as a fallback. None are required — but with them, parameter population is deterministic.
+A sample `AGENTS.md` showing every section convention `you-aware` reads (see [docs/context-conventions.md](../docs/context-conventions.md)). The same conventions work in a `CLAUDE.md`, which is read as a fallback. None are required — but with them, parameter population is deterministic.
 
 ## Project Context
 TypeScript app using date-fns for date handling.

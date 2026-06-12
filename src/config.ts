@@ -41,6 +41,14 @@ export const DEFAULT_BASE_URL = "https://api.ydc-index.io";
 
 const COMPILE_MODES: readonly string[] = ["auto", "operators", "native"];
 
+/**
+ * Some MCP clients substitute unset `{env:VAR}` config references to "" before
+ * spawning the server — an empty env value must behave exactly like an unset one.
+ */
+function nonEmpty(value: string | undefined): string | undefined {
+  return value ? value : undefined;
+}
+
 function envFlag(value: string | undefined): boolean | undefined {
   if (value === undefined || value === "") return undefined;
   return !["0", "false", "off", "no"].includes(value.toLowerCase());
@@ -72,23 +80,23 @@ export function loadConfig(argv: string[] = [], env: NodeJS.ProcessEnv = process
     return typeof v === "string" ? v : undefined;
   };
 
-  const compileMode = str("compile-mode") ?? env.YOU_AWARE_COMPILE_MODE ?? "auto";
+  const compileMode = str("compile-mode") ?? nonEmpty(env.YOU_AWARE_COMPILE_MODE) ?? "auto";
   if (!COMPILE_MODES.includes(compileMode)) {
     throw new Error(`invalid compile mode "${compileMode}" (expected auto | operators | native)`);
   }
 
   return {
-    apiKey: str("api-key") ?? env.YDC_API_KEY ?? env.YOU_API_KEY,
-    baseUrl: str("base-url") ?? env.YOU_API_BASE_URL ?? DEFAULT_BASE_URL,
-    projectRoot: str("project-root") ?? env.YOU_AWARE_PROJECT_ROOT ?? process.cwd(),
+    apiKey: str("api-key") ?? nonEmpty(env.YDC_API_KEY) ?? nonEmpty(env.YOU_API_KEY),
+    baseUrl: str("base-url") ?? nonEmpty(env.YOU_API_BASE_URL) ?? DEFAULT_BASE_URL,
+    projectRoot: str("project-root") ?? nonEmpty(env.YOU_AWARE_PROJECT_ROOT) ?? process.cwd(),
     readContext: args.has("no-context-read") ? false : (envFlag(env.YOU_AWARE_READ_CONTEXT) ?? true),
-    harness: str("harness") ?? env.YOU_AWARE_HARNESS ?? "unknown",
+    harness: str("harness") ?? nonEmpty(env.YOU_AWARE_HARNESS) ?? "unknown",
     telemetry: args.has("no-telemetry") ? false : (envFlag(env.YOU_AWARE_TELEMETRY) ?? true),
-    telemetryUrl: str("telemetry-url") ?? env.YOU_AWARE_TELEMETRY_URL,
-    telemetryDir: str("telemetry-dir") ?? env.YOU_AWARE_TELEMETRY_DIR ?? join(homedir(), ".you-aware"),
+    telemetryUrl: str("telemetry-url") ?? nonEmpty(env.YOU_AWARE_TELEMETRY_URL),
+    telemetryDir: str("telemetry-dir") ?? nonEmpty(env.YOU_AWARE_TELEMETRY_DIR) ?? join(homedir(), ".you-aware"),
     compileMode: compileMode as CompileMode,
-    freshWindowDays: Number(str("fresh-window-days") ?? env.YOU_AWARE_FRESH_WINDOW_DAYS ?? 180),
-    count: Number(str("count") ?? env.YOU_AWARE_COUNT ?? 10),
-    hostedMcpUrl: str("hosted-mcp-url") ?? env.YOU_AWARE_HOSTED_MCP_URL ?? "https://api.you.com/mcp",
+    freshWindowDays: Number(str("fresh-window-days") ?? nonEmpty(env.YOU_AWARE_FRESH_WINDOW_DAYS) ?? 180),
+    count: Number(str("count") ?? nonEmpty(env.YOU_AWARE_COUNT) ?? 10),
+    hostedMcpUrl: str("hosted-mcp-url") ?? nonEmpty(env.YOU_AWARE_HOSTED_MCP_URL) ?? "https://api.you.com/mcp",
   };
 }

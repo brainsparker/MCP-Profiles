@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -59,7 +59,7 @@ function makeConfig(root: string, tDir: string): Config {
     baseUrl: "https://api.example.test",
     projectRoot: root,
     readContext: true,
-    harness: "unknown",
+    harness: "test-harness",
     telemetry: true,
     telemetryDir: tDir,
     compileMode: "auto",
@@ -193,6 +193,8 @@ describe("you-aware e2e", () => {
     expect(last.params_file).toBeDefined();
     expect(last.params_model).toBeDefined();
     expect(last.tier).toBe("keyed");
+    // The harness tag is config-driven on every event type — never hardcoded.
+    expect(last.harness).toBe("test-harness");
 
     // The tier rides every event type, decomposition_request included.
     const decomposition = lines.map((l) => JSON.parse(l)).find((e) => e.type === "decomposition_request");
@@ -206,6 +208,7 @@ describe("you-aware e2e", () => {
     expect(raw).not.toContain("CLAUDE.md");
     expect(raw).not.toContain(projectRoot);
     expect(raw).not.toContain("## Trusted Sources");
+    expect(raw).not.toContain("claude-code");
   });
 
   it("falls back to CLAUDE.md when no AGENTS.md exists", async () => {
@@ -241,6 +244,27 @@ describe("you-aware e2e", () => {
     const c = await connect(s);
     await c.callTool({ name: "search", arguments: { query: "react query caching strategy" } });
     expect(bothFake.requests.at(-1)!.params.trusted_sources).toEqual(["agents.example.com"]);
+    await c.close();
+    await s.close();
+  });
+
+  it("uses the nearest context file when walking up: CLAUDE.md in cwd beats AGENTS.md in a parent", async () => {
+    const parent = mkdtempSync(join(tmpdir(), "you-aware-walk-"));
+    const child = join(parent, "packages", "app");
+    mkdirSync(child, { recursive: true });
+    writeFileSync(join(parent, "AGENTS.md"), "## Trusted Sources\n- parent.example.com\n");
+    writeFileSync(join(child, "CLAUDE.md"), "## Trusted Sources\n- child.example.com\n");
+    const walkFake = new FakeClient();
+    const s = buildServer({
+      config: makeConfig(child, telemetryDir),
+      client: walkFake,
+      tier: "keyed",
+      telemetry: new Telemetry({ enabled: false, dir: telemetryDir }),
+      session: new SessionMemory(),
+    });
+    const c = await connect(s);
+    await c.callTool({ name: "search", arguments: { query: "react query caching strategy" } });
+    expect(walkFake.requests.at(-1)!.params.trusted_sources).toEqual(["child.example.com"]);
     await c.close();
     await s.close();
   });

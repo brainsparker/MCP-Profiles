@@ -16,6 +16,7 @@ The server transmits harness-file content **nowhere** except as the populated pa
 - Populated parameter values — both file-read and model-supplied, kept side by side for faithfulness measurement
 - Result interactions (the URLs returned)
 - Outcome signals (near-duplicate query repetition rate, session call counts)
+- Event metadata — session id, call sequence, timestamp, tier, and the configured harness identifier (`--harness` / `YOU_AWARE_HARNESS`, default `unknown`)
 
 Tier 2 is the substrate signal loop and a design goal, not telemetry exhaust: it is the agent-shaped query-and-outcome data that makes retrieval measurably better for agents.
 

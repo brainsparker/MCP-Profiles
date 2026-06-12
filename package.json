@@ -22,7 +22,8 @@
     "spec",
     "docs",
     "examples",
-    "eval"
+    "eval",
+    "skills"
   ],
   "engines": {
     "node": ">=18"
