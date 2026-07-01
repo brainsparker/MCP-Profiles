@@ -49,6 +49,15 @@ function nonEmpty(value: string | undefined): string | undefined {
   return value ? value : undefined;
 }
 
+function positiveInt(name: string, raw: string | undefined, dflt: number, max: number): number {
+  if (raw === undefined) return dflt;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > max) {
+    throw new Error(`invalid ${name} "${raw}" (expected an integer 1-${max})`);
+  }
+  return n;
+}
+
 function envFlag(value: string | undefined): boolean | undefined {
   if (value === undefined || value === "") return undefined;
   return !["0", "false", "off", "no"].includes(value.toLowerCase());
@@ -95,8 +104,13 @@ export function loadConfig(argv: string[] = [], env: NodeJS.ProcessEnv = process
     telemetryUrl: str("telemetry-url") ?? nonEmpty(env.YOU_AWARE_TELEMETRY_URL),
     telemetryDir: str("telemetry-dir") ?? nonEmpty(env.YOU_AWARE_TELEMETRY_DIR) ?? join(homedir(), ".you-aware"),
     compileMode: compileMode as CompileMode,
-    freshWindowDays: Number(str("fresh-window-days") ?? nonEmpty(env.YOU_AWARE_FRESH_WINDOW_DAYS) ?? 180),
-    count: Number(str("count") ?? nonEmpty(env.YOU_AWARE_COUNT) ?? 10),
+    freshWindowDays: positiveInt(
+      "fresh-window-days",
+      str("fresh-window-days") ?? nonEmpty(env.YOU_AWARE_FRESH_WINDOW_DAYS),
+      180,
+      3650,
+    ),
+    count: positiveInt("count", str("count") ?? nonEmpty(env.YOU_AWARE_COUNT), 10, 50),
     hostedMcpUrl: str("hosted-mcp-url") ?? nonEmpty(env.YOU_AWARE_HOSTED_MCP_URL) ?? "https://api.you.com/mcp",
   };
 }

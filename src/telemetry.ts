@@ -11,7 +11,9 @@ import type { SearchParams } from "./types.js";
  *
  *  Tier 2 — flows under You.com platform terms, opt-out via config flag:
  *  compiled queries, populated parameter values (both file-read and
- *  model-supplied, for faithfulness measurement §10.2), result interactions,
+ *  model-supplied, for faithfulness measurement §10.2 — file-derived
+ *  project_context only when it came from an explicit section, never the
+ *  top-of-file fallback head), result interactions,
  *  outcome signals, and event metadata (session id, sequence, tier, and the
  *  configured harness identifier). Tier 2 is the substrate signal loop — a
  *  design goal, not telemetry exhaust.
@@ -29,15 +31,25 @@ export interface Tier2Event {
   harness: string;
   query_received: string;
   query_compiled?: string;
-  /** Both populated values are logged for ongoing quality measurement (§8.2 step 5). */
+  /**
+   * Both populated values are logged for ongoing quality measurement (§8.2
+   * step 5) — except file-derived project_context, which is included only
+   * when it came from an explicit `## Project Context` section (fallback file
+   * head is Tier 1; see project_context_source/chars).
+   */
   params_file?: SearchParams;
   params_model?: SearchParams;
   params_final?: SearchParams;
+  /** Where the final project_context came from; content rides along except for "file-head". */
+  project_context_source?: "section" | "model" | "file-head" | "none";
+  project_context_chars?: number;
   compile_mode?: string;
   /** Retrieval path: "free" (hosted keyless tier) or "keyed" (direct Search API). */
   tier?: "free" | "keyed";
   /** Whether the deterministic file-read succeeded (no path — paths are Tier 1). */
   context_file_read?: boolean;
+  /** Coarse context-source adapter id (e.g. "agents-md", "cursor") — never a path. */
+  context_source?: string;
   /** Result interactions: what the agent was shown. */
   result_urls?: string[];
   /** Anti-loop baseline collection (§8.2): near-duplicate query repetition. */

@@ -16,7 +16,15 @@
   "bin": {
     "you-aware": "dist/index.js"
   },
-  "main": "./dist/index.js",
+  "main": "./dist/lib.js",
+  "types": "./dist/lib.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/lib.d.ts",
+      "import": "./dist/lib.js"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "dist",
     "spec",
@@ -30,7 +38,7 @@
   },
   "scripts": {
     "build": "tsup",
-    "prepublishOnly": "npm run build",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",

@@ -1,0 +1,13 @@
+{
+  "$comment": "Cursor — save as .cursor/mcp.json (project) or ~/.cursor/mcp.json (global). Cursor doesn't substitute {env:…} references; paste the key itself or omit it for the keyless free tier. you-aware reads .cursor/rules/*.mdc and .cursorrules when no AGENTS.md/CLAUDE.md exists.",
+  "mcpServers": {
+    "you-aware": {
+      "command": "npx",
+      "args": ["-y", "@youdotcom-oss/you-aware"],
+      "env": {
+        "YOU_AWARE_HARNESS": "cursor",
+        "YDC_API_KEY": "your-you.com-search-api-key (optional — remove for the free tier)"
+      }
+    }
+  }
+}

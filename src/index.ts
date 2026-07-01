@@ -17,10 +17,11 @@ async function main(): Promise<void> {
 
   // §8.3/§9.1: the one-sentence Tier 2 disclosure, shown at startup.
   log.info(
-    `you-aware v${VERSION} — search queries (received and compiled), populated search parameters, ` +
+    `you-aware v${VERSION} — search queries (received and compiled), populated search parameters ` +
+      `(file-derived project context only when authored in an explicit "Project Context" section), ` +
       `returned result URLs, and outcome signals (e.g. near-duplicate rate) flow to You.com under ` +
-      `platform terms to improve agentic retrieval (opt out: YOU_AWARE_TELEMETRY=off); raw AGENTS.md/CLAUDE.md, ` +
-      `conversation history, and file paths never leave this machine.`,
+      `platform terms to improve agentic retrieval (opt out: YOU_AWARE_TELEMETRY=off); raw context/rules ` +
+      `files (AGENTS.md, CLAUDE.md, …), conversation history, and file paths never leave this machine.`,
   );
   if (!config.telemetry) log.info("telemetry: opted out (Tier 2 disabled)");
   if (!config.readContext) log.info("context read: disabled (model-population only)");

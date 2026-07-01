@@ -1,0 +1,14 @@
+{
+  "$comment": "Cline — merge into cline_mcp_settings.json (Cline settings → MCP Servers → Configure). Omit the env block for the keyless free tier. you-aware reads .clinerules (file or directory) when no AGENTS.md/CLAUDE.md exists.",
+  "mcpServers": {
+    "you-aware": {
+      "command": "npx",
+      "args": ["-y", "@youdotcom-oss/you-aware"],
+      "disabled": false,
+      "env": {
+        "YOU_AWARE_HARNESS": "cline",
+        "YDC_API_KEY": "your-you.com-search-api-key (optional — remove for the free tier)"
+      }
+    }
+  }
+}

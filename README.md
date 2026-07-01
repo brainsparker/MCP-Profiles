@@ -41,7 +41,21 @@ In Claude Code:
 claude mcp add you-aware -- npx -y @youdotcom-oss/you-aware
 ```
 
-Full client config examples (including the keyed variants) are in [examples/client-config/](./examples/client-config).
+The same `npx` command works in any MCP client. Full config examples (including the keyed variants) are in [examples/client-config/](./examples/client-config):
+
+| Client | Config file | Example | Context file read |
+|---|---|---|---|
+| OpenCode | `opencode.json` | [opencode.json](./examples/client-config/opencode.json) | `AGENTS.md` |
+| Claude Code | `claude mcp add you-aware -- npx -y @youdotcom-oss/you-aware` | — | `AGENTS.md` / `CLAUDE.md` |
+| Claude Desktop | `claude_desktop_config.json` | [claude-desktop.json](./examples/client-config/claude-desktop.json) | `AGENTS.md` / `CLAUDE.md` |
+| Codex CLI | `~/.codex/config.toml` | [codex-cli.toml](./examples/client-config/codex-cli.toml) | `AGENTS.md` |
+| Cursor | `.cursor/mcp.json` | [cursor.json](./examples/client-config/cursor.json) | `.cursor/rules/*.mdc`, `.cursorrules` |
+| Gemini CLI | `.gemini/settings.json` | [gemini-cli.json](./examples/client-config/gemini-cli.json) | `GEMINI.md` |
+| Cline | `cline_mcp_settings.json` | [cline.json](./examples/client-config/cline.json) | `.clinerules` |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` | [windsurf.json](./examples/client-config/windsurf.json) | `.windsurfrules` |
+| VS Code / Copilot & anything else | varies | [generic-mcpservers.json](./examples/client-config/generic-mcpservers.json) | `.github/copilot-instructions.md`, `AGENTS.md` |
+
+"Context file read" is what the server falls back to for that client's native convention — `AGENTS.md` (then `CLAUDE.md`) always wins when present, so one `AGENTS.md` serves every client identically. Full discovery order in [docs/context-conventions.md](./docs/context-conventions.md).
 
 One config block (or one command). No account creation. No memory setup. First retrieval works immediately because your project's `AGENTS.md` (or `CLAUDE.md`) is already in place. Without a key, searches run through You.com's hosted free tier (the same keyless tier the official You.com MCP uses — search-only, roughly 100 queries/day, context compiled into the query). Setting `YDC_API_KEY` — the same You.com Search API key you may already have, from [you.com/platform](https://you.com/platform) — switches to the direct Search API with higher limits and the native context parameters. Add it to the `environment` block:
 
@@ -51,7 +65,7 @@ One config block (or one command). No account creation. No memory setup. First r
 
 (An `{env:…}` reference that's unset in your shell substitutes to an empty string — the server treats it as absent and stays on the free tier. Clients that use the `mcpServers` config shape call this block `"env"` and don't substitute `{env:…}` — put the key itself there. The generous `timeout` covers `npx`'s first-run package download.)
 
-**Data handling, in one sentence:** search queries (received and compiled), populated search parameters, returned result URLs, and outcome signals (e.g. near-duplicate rate) flow to You.com under platform terms to improve agentic retrieval (opt out with `YOU_AWARE_TELEMETRY=off`); your raw `AGENTS.md` / `CLAUDE.md`, conversation history, and file paths never leave your machine. Details in [docs/data-handling.md](./docs/data-handling.md).
+**Data handling, in one sentence:** search queries (received and compiled), populated search parameters (file-derived project context only when authored in an explicit `## Project Context` section), returned result URLs, and outcome signals (e.g. near-duplicate rate) flow to You.com under platform terms to improve agentic retrieval (opt out with `YOU_AWARE_TELEMETRY=off`); your raw context/rules files, conversation history, and file paths never leave your machine. Details in [docs/data-handling.md](./docs/data-handling.md).
 
 ### Companion skill
 
@@ -78,8 +92,8 @@ All parameters are optional. With everything omitted you get exactly today's Sea
 
 ### Parameter population (Mechanism C)
 
-1. At call time, the server reads your project's `AGENTS.md` — or `CLAUDE.md` as a fallback — walking up from the project root (the nearest file wins; within a directory, `AGENTS.md` wins).
-2. It parses the [documented section conventions](./docs/context-conventions.md) — `## Trusted Sources`, `## Blocked Sources`, `## Decisions`, `## Project Context`, `## Freshness` — into ground-truth parameter values. No structured config required: any `AGENTS.md` works (top-of-file content becomes `project_context`).
+1. At call time, the server reads your project's context file — `AGENTS.md` first, then `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, and Cursor/Cline/Windsurf rules files — walking up from the project root (the nearest directory wins; within a directory, `AGENTS.md` wins).
+2. It parses the [documented section conventions](./docs/context-conventions.md) — `## Trusted Sources`, `## Blocked Sources`, `## Decisions`, `## Project Context`, `## Freshness` — into ground-truth parameter values, whatever file they live in. No structured config required: any context file works (top-of-file content becomes `project_context`).
 3. The calling model may *also* populate the same parameters from its working context.
 4. The final API call uses whichever source produces the higher-quality parameter, with the deterministic file-read as the safety net: source lists are unioned, and a model-supplied `project_context` (which can fold in conversation-level context the file can't see) overrides the file-derived one.
 5. Both populated values are logged for ongoing quality measurement.
@@ -126,7 +140,7 @@ CLI flag > environment variable > default.
 |---|---|---|---|
 | `--api-key` | `YDC_API_KEY` (or `YOU_API_KEY`) | — | You.com Search API key; without one, the keyless hosted free tier is used |
 | `--hosted-mcp-url` | `YOU_AWARE_HOSTED_MCP_URL` | `https://api.you.com/mcp` | hosted MCP endpoint backing the keyless free tier |
-| `--project-root` | `YOU_AWARE_PROJECT_ROOT` | cwd | where to look for `AGENTS.md` / `CLAUDE.md` |
+| `--project-root` | `YOU_AWARE_PROJECT_ROOT` | cwd | where to look for the context file (`AGENTS.md`, `CLAUDE.md`, rules files, …) |
 | `--harness` | `YOU_AWARE_HARNESS` | `unknown` | harness identifier stamped on Tier 2 telemetry events |
 | `--no-context-read` | `YOU_AWARE_READ_CONTEXT=off` | on | disable the deterministic file-read |
 | `--no-telemetry` | `YOU_AWARE_TELEMETRY=off` | on | opt out of Tier 2 telemetry |
@@ -146,6 +160,8 @@ The ablation-controlled eval harness (control passthrough vs. compiled lexical v
 ```bash
 YDC_API_KEY=… npm run eval -- --goldset eval/goldset.sample.jsonl --arm all
 ```
+
+Without `YDC_API_KEY`, the eval runs against the keyless hosted free tier — fine for smoke-testing the sample goldset, but its ~100 queries/day limit will truncate a real run.
 
 ## Development
 

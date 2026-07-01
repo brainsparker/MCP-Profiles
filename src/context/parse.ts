@@ -172,6 +172,7 @@ export function parseHarnessContext(markdown: string, filePath: string): Harness
     }
   }
 
+  ctx.projectContextExplicit = Boolean(explicitProjectContext);
   if (explicitProjectContext) {
     ctx.projectContext = truncateUtf8(explicitProjectContext, PROJECT_CONTEXT_MAX_BYTES);
   } else {

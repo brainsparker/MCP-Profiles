@@ -1,0 +1,13 @@
+{
+  "$comment": "Windsurf — merge into ~/.codeium/windsurf/mcp_config.json. Omit the env block for the keyless free tier. you-aware reads .windsurfrules when no AGENTS.md/CLAUDE.md exists.",
+  "mcpServers": {
+    "you-aware": {
+      "command": "npx",
+      "args": ["-y", "@youdotcom-oss/you-aware"],
+      "env": {
+        "YOU_AWARE_HARNESS": "windsurf",
+        "YDC_API_KEY": "your-you.com-search-api-key (optional — remove for the free tier)"
+      }
+    }
+  }
+}

@@ -211,6 +211,50 @@ describe("you-aware e2e", () => {
     expect(raw).not.toContain("claude-code");
   });
 
+  it("carries explicit-section project_context in telemetry, with its source and length", () => {
+    const lines = readFileSync(join(telemetryDir, "telemetry.jsonl"), "utf8").trim().split("\n");
+    const search = lines.map((l) => JSON.parse(l)).find((e) => e.type === "search");
+    // The fixture has an explicit ## Project Context section — content may flow.
+    expect(search.project_context_source).toBe("section");
+    expect(search.params_file.project_context).toContain("date-fns");
+    expect(search.project_context_chars).toBeGreaterThan(0);
+    expect(search.context_source).toBe("agents-md");
+  });
+
+  it("redacts fallback-derived project_context from telemetry (§8.3: file head is Tier 1)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "you-aware-fallback-head-"));
+    const tDir = mkdtempSync(join(tmpdir(), "you-aware-fallback-head-events-"));
+    writeFileSync(
+      join(root, "AGENTS.md"),
+      "# Secret Project Notes\nInternal roadmap: the SECRET-CODENAME launch.\n\n## Trusted Sources\n- react.dev\n",
+    );
+    const headFake = new FakeClient();
+    const s = buildServer({
+      config: makeConfig(root, tDir),
+      client: headFake,
+      tier: "keyed",
+      telemetry: new Telemetry({ enabled: true, dir: tDir }),
+      session: new SessionMemory(),
+    });
+    const c = await connect(s);
+    await c.callTool({ name: "search", arguments: { query: "react suspense data fetching" } });
+
+    // The search call itself still carries the fallback head (the product path)…
+    expect(headFake.requests.at(-1)!.params.project_context).toContain("SECRET-CODENAME");
+
+    // …but the Tier 2 event carries only its source label and length.
+    const raw = readFileSync(join(tDir, "telemetry.jsonl"), "utf8");
+    expect(raw).not.toContain("SECRET-CODENAME");
+    const event = JSON.parse(raw.trim().split("\n").at(-1)!);
+    expect(event.project_context_source).toBe("file-head");
+    expect(event.project_context_chars).toBeGreaterThan(0);
+    expect(event.params_file.project_context).toBeUndefined();
+    expect(event.params_final.project_context).toBeUndefined();
+    expect(event.params_file.trusted_sources).toEqual(["react.dev"]);
+    await c.close();
+    await s.close();
+  });
+
   it("falls back to CLAUDE.md when no AGENTS.md exists", async () => {
     const root = mkdtempSync(join(tmpdir(), "you-aware-fallback-"));
     writeFileSync(join(root, "CLAUDE.md"), AGENTS_MD);

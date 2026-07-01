@@ -1,6 +1,16 @@
 # Context file section conventions
 
-`you-aware` reads your project's `AGENTS.md` (or `CLAUDE.md`, as a fallback) at call time and parses these section conventions into ground-truth search parameters. **None of them are required** — any `AGENTS.md` delivers value (without an explicit `## Project Context` section, the top of the file is used, truncated to 4 KB). The conventions just make the population deterministic and precise.
+`you-aware` reads your project's context file at call time and parses these section conventions into ground-truth search parameters. Discovery walks up from the project root (up to 6 levels, nearest directory wins) checking, in order per directory:
+
+1. `AGENTS.md` (the open convention)
+2. `CLAUDE.md`
+3. `GEMINI.md`
+4. `.github/copilot-instructions.md`
+5. `.cursor/rules/*.mdc` (lexical order, YAML frontmatter stripped) + legacy `.cursorrules`
+6. `.clinerules` (single file, or a directory of `.md` files)
+7. `.windsurfrules`
+
+The first convention with a hit wins; the same parser runs regardless of source, so a `## Trusted Sources` section works in a `.cursorrules` exactly as it does in `AGENTS.md`. **None of the conventions are required** — any context file delivers value (without an explicit `## Project Context` section, the top of the file is used, truncated to 4 KB). The conventions just make the population deterministic and precise.
 
 Headings are matched case-insensitively at any heading level.
 
@@ -58,7 +68,7 @@ stable
 
 ## Notes
 
-- v1 reads `AGENTS.md` and `CLAUDE.md` only (walking up from the project root, up to 6 levels; the nearest file wins, and within a directory `AGENTS.md` wins). Cursor-rules and Cline-memory adapters ship at v2 GA.
-- Without an explicit `## Project Context` section, the file head is used verbatim (naive truncation — smart slicing is planned for v2.1). If your context file is long, adding the explicit section is the highest-leverage convention to adopt.
+- Files are read with a 256 KiB per-file cap (oversized files are truncated to the head, with a stderr warning). All `.mdc` rule files are included regardless of their `globs` frontmatter — glob-scoped inclusion is a documented v1 simplification.
+- Without an explicit `## Project Context` section, the file head is used verbatim on the search call (naive truncation — smart slicing is planned for v2.1), and its content is excluded from Tier 2 telemetry (see [data-handling.md](./data-handling.md)). If your context file is long, adding the explicit section is the highest-leverage convention to adopt.
 - Opt out of file reading entirely with `YOU_AWARE_READ_CONTEXT=off`; the model can still populate every parameter per call.
 - The companion skill in [`skills/you-aware/`](../skills/you-aware) teaches agents these conventions, including when to write them back.

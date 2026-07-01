@@ -3,10 +3,10 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import type { Config } from "./config.js";
 import { compileQuery } from "./compile.js";
-import { findContextFile, readContextFile } from "./context/read.js";
+import { findContextSource, readContextSource } from "./context/read.js";
 import { parseHarnessContext } from "./context/parse.js";
 import { decompositionRequest, detectMultiHop } from "./decompose.js";
-import { populateParams } from "./params.js";
+import { populateParams, type ParamProvenance } from "./params.js";
 import { postRank } from "./rank.js";
 import { SessionMemory } from "./session.js";
 import { formatTrace, type Trace } from "./trace.js";
@@ -30,8 +30,9 @@ export interface ServerDeps {
   now?: () => Date;
 }
 
-const SERVER_INSTRUCTIONS = `you-aware makes web search context-aware: it reads the project's AGENTS.md \
-(or CLAUDE.md — trusted/blocked sources, decisions ledger, project context) and compiles that context into the query \
+const SERVER_INSTRUCTIONS = `you-aware makes web search context-aware: it reads the project's context file — \
+AGENTS.md first, then CLAUDE.md, GEMINI.md, .github/copilot-instructions.md, Cursor/Cline/Windsurf rules files — \
+(trusted/blocked sources, decisions ledger, project context) and compiles that context into the query \
 and retrieval parameters. Call \`search\` for technical research. You may also populate trusted_sources, \
 blocked_sources, project_context, and freshness yourself from your working context — the server merges \
 your values with its deterministic file-read (the file-read is the safety net; your values can add \
@@ -42,18 +43,59 @@ const searchDescription = (tier: "free" | "keyed"): string =>
   `Web search over ${
     tier === "keyed" ? "the You.com Search API" : "You.com (hosted free tier)"
   }, tuned to this project's context. \
-The server reads the project's AGENTS.md or CLAUDE.md (Mechanism C), merges it with any parameters you supply, compiles the query \
+The server reads the project's context file (AGENTS.md, CLAUDE.md, GEMINI.md, Copilot/Cursor/Cline/Windsurf rules), \
+merges it with any parameters you supply, compiles the query \
 into lexical form (vocabulary injection, decision-ledger exclusions, source/freshness handling), and \
 returns ranked results with an inspectable trace of exactly what ran. Multi-intent queries return a \
 decomposition_request instead of results — split them and search per sub-query.`;
 
 function readHarnessContext(config: Config): HarnessContext | null {
   if (!config.readContext) return null;
-  const path = findContextFile(config.projectRoot);
-  if (!path) return null;
-  const raw = readContextFile(path);
+  const resolved = findContextSource(config.projectRoot);
+  if (!resolved) return null;
+  const raw = readContextSource(resolved);
   if (raw === null) return null;
-  return parseHarnessContext(raw, path);
+  const ctx = parseHarnessContext(raw, resolved.paths[0]!);
+  ctx.source = resolved.sourceId;
+  return ctx;
+}
+
+/**
+ * §8.3: file-derived project_context enters Tier 2 events only when it came
+ * from an explicit `## Project Context` section — content the developer
+ * authored for this purpose. The top-of-file fallback is raw file head, which
+ * is Tier 1; telemetry gets its source label and length instead. The search
+ * call itself is unaffected (prov.final is used there unredacted).
+ */
+function telemetrySafeParams(
+  prov: ParamProvenance,
+  fileCtx: HarnessContext | null,
+): {
+  params_file: SearchParams;
+  params_model: SearchParams;
+  params_final: SearchParams;
+  project_context_source: "section" | "model" | "file-head" | "none";
+  project_context_chars: number;
+} {
+  const fileHead = Boolean(fileCtx?.projectContext) && !fileCtx?.projectContextExplicit;
+  const strip = (p: SearchParams): SearchParams => {
+    const { project_context: _tier1, ...rest } = p;
+    return rest;
+  };
+  const source = prov.model.project_context
+    ? "model"
+    : prov.file.project_context
+      ? fileHead
+        ? "file-head"
+        : "section"
+      : "none";
+  return {
+    params_file: fileHead ? strip(prov.file) : prov.file,
+    params_model: prov.model,
+    params_final: source === "file-head" ? strip(prov.final) : prov.final,
+    project_context_source: source,
+    project_context_chars: prov.final.project_context?.length ?? 0,
+  };
 }
 
 function formatResults(hits: SearchHit[]): string {
@@ -172,12 +214,11 @@ export function buildServer(deps: ServerDeps): McpServer {
         harness: config.harness,
         query_received: queryReceived,
         query_compiled: compiled.query,
-        params_file: prov.file,
-        params_model: prov.model,
-        params_final: prov.final,
+        ...telemetrySafeParams(prov, fileCtx),
         compile_mode: config.compileMode,
         tier: deps.tier,
         context_file_read: fileCtx !== null,
+        context_source: fileCtx?.source,
         near_duplicate: dup.nearDuplicate,
         session_duplicate_rate: session.duplicateRate,
         session_calls: session.calls,

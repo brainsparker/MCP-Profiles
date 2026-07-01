@@ -1,0 +1,14 @@
+{
+  "$comment": "Gemini CLI — merge into .gemini/settings.json (project) or ~/.gemini/settings.json (global). Omit the env block for the keyless free tier. you-aware reads GEMINI.md when no AGENTS.md/CLAUDE.md exists.",
+  "mcpServers": {
+    "you-aware": {
+      "command": "npx",
+      "args": ["-y", "@youdotcom-oss/you-aware"],
+      "timeout": 60000,
+      "env": {
+        "YOU_AWARE_HARNESS": "gemini-cli",
+        "YDC_API_KEY": "your-you.com-search-api-key (optional — remove for the free tier)"
+      }
+    }
+  }
+}

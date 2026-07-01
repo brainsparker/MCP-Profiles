@@ -1,0 +1,41 @@
+name: Release
+
+# Tag-triggered npm publish with provenance. Requirements before tagging:
+#  - NPM_TOKEN repository secret (npm automation token with publish rights)
+#  - package.json "repository.url" must match this GitHub repository, or
+#    `npm publish --provenance` refuses to publish
+#  - the tag must be v<package.json version> (guarded below)
+# prepublishOnly runs typecheck + tests + build inside `npm publish`.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write # npm provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+          cache: npm
+          registry-url: "https://registry.npmjs.org"
+      - run: npm ci
+      - name: Verify tag matches package.json version
+        run: |
+          node -e "
+            const v = require('./package.json').version;
+            const tag = process.env.GITHUB_REF_NAME;
+            if ('v' + v !== tag) {
+              console.error('tag ' + tag + ' does not match package.json version ' + v);
+              process.exit(1);
+            }
+          "
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

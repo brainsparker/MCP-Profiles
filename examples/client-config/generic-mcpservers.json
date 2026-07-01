@@ -1,0 +1,13 @@
+{
+  "$comment": "Generic mcpServers shape — most MCP clients accept this block verbatim. Set YOU_AWARE_HARNESS to your client's name (a free-form telemetry label, never behavioral). Omit YDC_API_KEY for the keyless free tier (~100 queries/day). Clients with this config shape don't substitute {env:…} references — paste the key itself.",
+  "mcpServers": {
+    "you-aware": {
+      "command": "npx",
+      "args": ["-y", "@youdotcom-oss/you-aware"],
+      "env": {
+        "YOU_AWARE_HARNESS": "your-client-name",
+        "YDC_API_KEY": "your-you.com-search-api-key (optional — remove for the free tier)"
+      }
+    }
+  }
+}

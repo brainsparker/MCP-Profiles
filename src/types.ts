@@ -63,6 +63,14 @@ export interface HarnessContext {
   blockedSources: string[];
   decisions: Decision[];
   projectContext?: string;
+  /**
+   * True when projectContext came from an explicit `## Project Context`
+   * section (authored for this purpose) rather than the top-of-file fallback.
+   * Telemetry only carries the content in the explicit case (§8.3).
+   */
+  projectContextExplicit?: boolean;
+  /** Coarse context-source adapter id (e.g. "agents-md", "cursor") — never a path. */
+  source?: string;
   freshness?: Freshness;
   /**
    * Absolute path of the file that was read. Tier 1 (§8.3): file paths never

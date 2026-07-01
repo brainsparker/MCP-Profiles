@@ -1,0 +1,8 @@
+# Codex CLI — add to ~/.codex/config.toml. Omit the env key line to run on
+# the keyless free tier (~100 queries/day). Codex reads AGENTS.md natively,
+# which is exactly the file you-aware compiles context from.
+
+[mcp_servers.you-aware]
+command = "npx"
+args = ["-y", "@youdotcom-oss/you-aware"]
+env = { "YOU_AWARE_HARNESS" = "codex", "YDC_API_KEY" = "your-you.com-search-api-key" }

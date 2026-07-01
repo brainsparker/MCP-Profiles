@@ -21,6 +21,25 @@ describe("loadConfig", () => {
     expect(cfg.apiKey).toBeUndefined();
   });
 
+  it("accepts valid count/fresh-window-days integers", () => {
+    const cfg = loadConfig(["--count", "25"], {
+      YOU_AWARE_FRESH_WINDOW_DAYS: "30",
+    } as NodeJS.ProcessEnv);
+    expect(cfg.count).toBe(25);
+    expect(cfg.freshWindowDays).toBe(30);
+  });
+
+  it("rejects non-numeric, zero, negative, fractional, and out-of-range numeric settings", () => {
+    expect(() => loadConfig([], { YOU_AWARE_COUNT: "abc" } as NodeJS.ProcessEnv)).toThrow(/invalid count/);
+    expect(() => loadConfig([], { YOU_AWARE_COUNT: "0" } as NodeJS.ProcessEnv)).toThrow(/invalid count/);
+    expect(() => loadConfig(["--count", "-5"], {} as NodeJS.ProcessEnv)).toThrow(/invalid count/);
+    expect(() => loadConfig([], { YOU_AWARE_COUNT: "2.5" } as NodeJS.ProcessEnv)).toThrow(/invalid count/);
+    expect(() => loadConfig([], { YOU_AWARE_COUNT: "51" } as NodeJS.ProcessEnv)).toThrow(/invalid count/);
+    expect(() =>
+      loadConfig([], { YOU_AWARE_FRESH_WINDOW_DAYS: "9999" } as NodeJS.ProcessEnv),
+    ).toThrow(/invalid fresh-window-days/);
+  });
+
   it("resolves the harness tag with flag > env > default precedence", () => {
     expect(loadConfig([], {} as NodeJS.ProcessEnv).harness).toBe("unknown");
     expect(loadConfig([], { YOU_AWARE_HARNESS: "opencode" } as NodeJS.ProcessEnv).harness).toBe("opencode");

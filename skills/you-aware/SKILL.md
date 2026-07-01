@@ -6,7 +6,7 @@ license: MIT
 
 # you-aware: context-aware search and context curation
 
-This project has the you-aware `search` tool available (an MCP server — your client may expose it under a namespaced id such as `you-aware_search`). It is web search that already knows the project: at call time the server reads the project's `AGENTS.md` (or `CLAUDE.md` as a fallback), parses trusted/blocked sources, prior decisions, project context, and freshness preference, merges those with whatever parameters you supply, compiles the query into lexical form, and returns ranked results plus a trace of exactly what ran.
+This project has the you-aware `search` tool available (an MCP server — your client may expose it under a namespaced id such as `you-aware_search`). It is web search that already knows the project: at call time the server reads the project's context file (`AGENTS.md` first; `CLAUDE.md`, `GEMINI.md`, Copilot/Cursor/Cline/Windsurf rules files as fallbacks), parses trusted/blocked sources, prior decisions, project context, and freshness preference, merges those with whatever parameters you supply, compiles the query into lexical form, and returns ranked results plus a trace of exactly what ran.
 
 This skill covers both halves of that loop: calling the tool well, and keeping the context file it reads accurate.
 
@@ -49,7 +49,7 @@ Every response ends with a trace (`query_received`, `query_compiled`, sources bo
 
 ## Curating AGENTS.md (the file half of the loop)
 
-The server reads the nearest `AGENTS.md` walking up from the project root (`CLAUDE.md` is the fallback; within a directory `AGENTS.md` wins). Maintain these sections — headings match case-insensitively at any heading level, and none are required:
+The server reads the nearest context file walking up from the project root — per directory it checks `AGENTS.md`, then `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.cursor/rules/*.mdc` + `.cursorrules`, `.clinerules`, `.windsurfrules`; the first hit wins. The section conventions below work in any of them, but prefer recording durable context in `AGENTS.md` — it has top precedence and every harness reads it. Headings match case-insensitively at any heading level, and none are required:
 
 ### Project Context
 
