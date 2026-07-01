@@ -15,28 +15,29 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE.url),
-  title: "MCP Profiles — programmable identity for AI agents",
+  title: "you-aware — search that knows what you're building",
   description: SITE.description,
   keywords: [
     "MCP",
     "Model Context Protocol",
     "AI agents",
-    "agent identity",
-    "agent profiles",
-    "retrieval",
-    "tool permissions",
+    "web search",
+    "AGENTS.md",
+    "context-aware search",
+    "agent retrieval",
+    "You.com",
   ],
   authors: [{ name: "Brian Sparker" }],
   openGraph: {
-    title: "MCP Profiles — programmable identity for AI agents",
+    title: "you-aware — search that knows what you're building",
     description: SITE.description,
     url: SITE.url,
-    siteName: "MCP Profiles",
+    siteName: "you-aware",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "MCP Profiles",
+    title: "you-aware",
     description: SITE.description,
   },
 };

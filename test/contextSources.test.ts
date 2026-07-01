@@ -128,11 +128,17 @@ describe("readContextSource", () => {
     expect(ctx.projectContextExplicit).toBe(true);
   });
 
-  it("marks fallback-derived project context as not explicit", () => {
+  it("marks fallback-derived project context as not explicit (opt-in head fallback)", () => {
     writeFileSync(join(root, "AGENTS.md"), "# My project\nJust prose, no sections.");
     const resolved = findContextSource(root)!;
-    const ctx = parseHarnessContext(readContextSource(resolved)!, resolved.paths[0]!);
+    const ctx = parseHarnessContext(readContextSource(resolved)!, resolved.paths[0]!, {
+      headFallback: true,
+    });
     expect(ctx.projectContextExplicit).toBe(false);
     expect(ctx.projectContext).toContain("Just prose");
+
+    // Default: the raw head never becomes project_context.
+    const dflt = parseHarnessContext(readContextSource(resolved)!, resolved.paths[0]!);
+    expect(dflt.projectContext).toBeUndefined();
   });
 });

@@ -16,8 +16,21 @@ export interface DecompositionCheck {
 const CONJOINED_INTERROGATIVE =
   /\b(?:and|then|also|plus)\s+(?:also\s+)?(?:what|how|why|which|where|who|when|does|is|are|can|should)\b/i;
 
+/**
+ * Conjoined intents only count when the query opens as a question or an
+ * imperative request — "next.js middleware and how it changed in 15" is one
+ * topic, not two asks; "list the breaking changes and how to fix them" is two.
+ */
+const INTERROGATIVE_START =
+  /^(what|how|why|which|where|who|when|does|do|is|are|can|should|explain|find|best|the best|tell( me)?|show( me)?|list|give( me)?|summarize|describe|research|recommend|suggest)\b/i;
+
+/**
+ * "for each" needs actual enumeration ("for each of react, vue, svelte") —
+ * bare "for each" appears in single-intent programming queries ("python for
+ * each loop syntax") and must never bounce them.
+ */
 const ENUMERATED_RESEARCH =
-  /\bfor each\b|\brespectively\b|\bcompare\b.+\b(?:and|versus|vs\.?|with)\b.+\b(?:and|versus|vs\.?|with)\b/i;
+  /\bfor each of\b|\brespectively\b|\bcompare\b.+\b(?:and|versus|vs\.?|with)\b.+\b(?:and|versus|vs\.?|with)\b/i;
 
 /** Code operator sequences (`??`, `?.`, `?:`) and mid-token `?` (URLs, SQL `?=`) are not questions. */
 function questionCount(query: string): number {
@@ -31,7 +44,7 @@ export function detectMultiHop(query: string): DecompositionCheck {
   if (questionCount(query) >= 2) {
     return { multiHop: true, reason: "multiple questions in one query" };
   }
-  if (CONJOINED_INTERROGATIVE.test(query)) {
+  if (INTERROGATIVE_START.test(query.trim()) && CONJOINED_INTERROGATIVE.test(query)) {
     return { multiHop: true, reason: "conjoined retrieval intents" };
   }
   if (ENUMERATED_RESEARCH.test(query)) {

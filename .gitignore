@@ -5,3 +5,6 @@ dist/
 .env
 .env.*
 coverage/
+
+# Local working notes (never committed)
+*.local.md

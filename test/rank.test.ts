@@ -38,5 +38,25 @@ describe("postRank (client-side Product A mechanics)", () => {
     const plain = postRank(hits, [], []);
     expect(plain.hits).toEqual(hits);
     expect(plain.preRankTop3).toEqual(plain.postRankTop3);
+    expect(plain.memoryBoosted).toEqual([]);
+  });
+
+  it("slots the preferred (memory) tier between trusted and the middle", () => {
+    const ranked = postRank(hits, ["react.dev"], ["w3schools.com"], ["stackoverflow.com"]);
+    expect(ranked.hits.map((h) => h.url)).toEqual([
+      "https://react.dev/learn/dates",
+      "https://stackoverflow.com/q/123",
+      "https://blog.example.com/date-parsing",
+      "https://docs.tanstack.com/query/latest",
+      "https://www.w3schools.com/js/js_dates.asp",
+    ]);
+    expect(ranked.memoryBoosted).toEqual(["stackoverflow.com"]);
+  });
+
+  it("trusted and blocked both beat preferred for the same domain", () => {
+    const ranked = postRank(hits, ["react.dev"], ["w3schools.com"], ["react.dev", "w3schools.com"]);
+    expect(ranked.hits[0]!.url).toContain("react.dev");
+    expect(ranked.hits.at(-1)!.url).toContain("w3schools");
+    expect(ranked.memoryBoosted).toEqual([]);
   });
 });

@@ -1,5 +1,6 @@
 import type { Decision, Freshness, HarnessContext } from "../types.js";
 import { PROJECT_CONTEXT_MAX_BYTES, truncateUtf8 } from "../types.js";
+import { log } from "../util/logger.js";
 
 /**
  * Section conventions for harness-context files (PRD §8.2 / §14.2). These are
@@ -44,13 +45,19 @@ export function contentTokens(text: string): string[] {
  */
 export function normalizeDomain(entry: string): string | null {
   let s = entry.trim();
-  // Markdown link: prefer the URL target.
-  const link = /\[[^\]]*\]\(([^)]+)\)/.exec(s);
+  // Markdown link: prefer the URL target — only its URL token, so a
+  // CommonMark title (`[React](https://react.dev "React docs")`) or an
+  // angle-bracketed destination never trips the whitespace check below.
+  const link = /\[[^\]]*\]\(\s*<?([^)\s>]+)/.exec(s);
   if (link) s = link[1]!;
   s = s.replace(/^[-*+]\s+/, "").trim();
   s = s.replace(/^<|>$/g, "");
   s = s.replace(/^https?:\/\//i, "");
-  s = s.split(/[/?#\s]/)[0]!;
+  // A prose entry ("Node.js official docs") is not a domain — treating its
+  // first token as one would compile a recall-destroying filter. Only accept
+  // entries that are a single domain/URL token.
+  if (/\s/.test(s)) return null;
+  s = s.split(/[/?#]/)[0]!;
   s = s.replace(/^www\./i, "").toLowerCase();
   if (!/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/.test(s)) return null;
   return s;
@@ -91,11 +98,22 @@ export function exclusionTermFor(rejected: string): string {
   return name;
 }
 
+/**
+ * A rejected option must look like an identifier (moment.js, styled-components,
+ * @tanstack/query) or be backticked in the source line — otherwise "avoid
+ * premature optimization" would emit a recall-destroying `-premature` on every
+ * optimization query. Single-word packages can be backticked: "Avoid `lodash`".
+ */
+function identifierShaped(rejected: string, line: string): boolean {
+  if (/[@./_\-]|\d/.test(rejected)) return true;
+  return line.includes(`\`${rejected}\``);
+}
+
 /** Parse one decisions-ledger line into a Decision, or null when no rejection is found. */
 export function parseDecisionLine(line: string): Decision | null {
   const trimmed = line.replace(/^([-*+]|\d+[.)])\s+/, "").trim();
   if (!trimmed) return null;
-  for (const pattern of REJECTION_PATTERNS) {
+  for (const [i, pattern] of REJECTION_PATTERNS.entries()) {
     const m = pattern.exec(trimmed);
     if (m) {
       const rejected = m[1]!.replace(/[.,;:]+$/, "");
@@ -103,6 +121,10 @@ export function parseDecisionLine(line: string): Decision | null {
       // A stopword exclusion ("-using", "-the") would devastate recall on
       // engines honoring negation; better to drop the decision than emit it.
       if (!exclusionTerm || STOPWORDS.has(exclusionTerm)) return null;
+      // The verb patterns ("avoid X", "X was rejected") also match plain-prose
+      // guidance; gate those on identifier shape. "Chose A over B" names a
+      // concrete alternative by construction, so it stays ungated.
+      if (i < 2 && !identifierShaped(rejected, trimmed)) return null;
       const rejectedTokens = new Set(contentTokens(rejected).concat(exclusionTerm));
       const topicTokens = contentTokens(trimmed).filter((t) => !rejectedTokens.has(t));
       return { line: trimmed, rejected, exclusionTerm, topicTokens };
@@ -116,11 +138,33 @@ interface Section {
   body: string;
 }
 
-/** Split a markdown document into heading-delimited sections (any heading level). */
-function splitSections(markdown: string): Section[] {
+/**
+ * Split a markdown document into heading-delimited sections (any heading
+ * level). Fenced code blocks are opaque: a `# comment` inside a ```bash block
+ * must not become a section boundary, and a fenced markdown *example* showing
+ * `## Blocked Sources` must not inject live parameters.
+ */
+function splitSections(markdown: string): { sections: Section[]; unclosedFence: boolean } {
   const sections: Section[] = [];
   let current: Section | null = null;
+  let fence: string | null = null;
   for (const line of markdown.split("\n")) {
+    if (fence) {
+      // A closing fence carries nothing but whitespace after the run
+      // (CommonMark: info strings are opening-only), same character, at
+      // least as long — otherwise a ```md line inside a ```text block would
+      // close the fence and let example headings go live.
+      const close = /^\s{0,3}(`{3,}|~{3,})\s*$/.exec(line);
+      if (close && close[1]![0] === fence[0] && close[1]!.length >= fence.length) fence = null;
+      if (current) current.body += line + "\n";
+      continue;
+    }
+    const open = /^\s{0,3}(`{3,}|~{3,})/.exec(line);
+    if (open) {
+      fence = open[1]!;
+      if (current) current.body += line + "\n";
+      continue;
+    }
     const h = /^#{1,6}\s+(.+?)\s*#*\s*$/.exec(line);
     if (h) {
       if (current) sections.push(current);
@@ -130,14 +174,28 @@ function splitSections(markdown: string): Section[] {
     }
   }
   if (current) sections.push(current);
-  return sections;
+  return { sections, unclosedFence: fence !== null };
+}
+
+export interface ParseOptions {
+  /**
+   * Off by default (§8.3): without an explicit `## Project Context` section,
+   * no project_context is derived at all — the file head is raw file content
+   * and must not ride the search call unless the developer opts in
+   * (YOU_AWARE_CONTEXT_FALLBACK=head).
+   */
+  headFallback?: boolean;
 }
 
 /**
- * Mechanism C step 2 (§8.2): parse known section conventions from the harness
- * context file to populate ground-truth parameter values.
+ * Deterministic file-read (§8.2 step 2): parse known section conventions from
+ * the harness context file to populate ground-truth parameter values.
  */
-export function parseHarnessContext(markdown: string, filePath: string): HarnessContext {
+export function parseHarnessContext(
+  markdown: string,
+  filePath: string,
+  opts: ParseOptions = {},
+): HarnessContext {
   const ctx: HarnessContext = {
     trustedSources: [],
     blockedSources: [],
@@ -147,7 +205,18 @@ export function parseHarnessContext(markdown: string, filePath: string): Harness
 
   let explicitProjectContext: string | null = null;
 
-  for (const section of splitSections(markdown)) {
+  const { sections, unclosedFence } = splitSections(markdown);
+  if (unclosedFence) {
+    // Everything after an unclosed ``` is fenced content per CommonMark —
+    // sections below it silently vanish. Say so instead of losing parameters
+    // with no signal.
+    log.warn(
+      "context file has an unclosed code fence — sections after it were not parsed. " +
+        "Close the fence (```) to restore trusted/blocked/decisions parsing.",
+    );
+  }
+
+  for (const section of sections) {
     const { heading, body } = section;
     if (SECTION_MATCHERS.trusted!.test(heading)) {
       for (const entry of listEntries(body)) {
@@ -175,8 +244,9 @@ export function parseHarnessContext(markdown: string, filePath: string): Harness
   ctx.projectContextExplicit = Boolean(explicitProjectContext);
   if (explicitProjectContext) {
     ctx.projectContext = truncateUtf8(explicitProjectContext, PROJECT_CONTEXT_MAX_BYTES);
-  } else {
-    // Fallback: naive top-of-file truncation (§11 risk, documented; smart slicing is v2.1).
+  } else if (opts.headFallback) {
+    // Opt-in fallback: naive top-of-file truncation. Off by default because
+    // the head is raw file content, and the search call transmits it.
     const head = truncateUtf8(markdown.trim(), PROJECT_CONTEXT_MAX_BYTES);
     if (head) ctx.projectContext = head;
   }

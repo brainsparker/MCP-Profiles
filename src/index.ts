@@ -1,6 +1,7 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { loadConfig } from "./config.js";
 import { HostedMcpClient } from "./hostedClient.js";
+import { ProjectMemory } from "./memory.js";
 import { buildServer } from "./server.js";
 import { SessionMemory } from "./session.js";
 import { Telemetry } from "./telemetry.js";
@@ -15,16 +16,38 @@ import { YouComClient } from "./youcom.js";
 async function main(): Promise<void> {
   const config = loadConfig(process.argv.slice(2));
 
-  // §8.3/§9.1: the one-sentence Tier 2 disclosure, shown at startup.
+  // §8.3/§9.1: the data-handling disclosure, shown at startup. It must
+  // describe what THIS configuration actually does — never a future plan.
   log.info(
-    `you-aware v${VERSION} — search queries (received and compiled), populated search parameters ` +
-      `(file-derived project context only when authored in an explicit "Project Context" section), ` +
-      `returned result URLs, and outcome signals (e.g. near-duplicate rate) flow to You.com under ` +
-      `platform terms to improve agentic retrieval (opt out: YOU_AWARE_TELEMETRY=off); raw context/rules ` +
-      `files (AGENTS.md, CLAUDE.md, …), conversation history, and file paths never leave this machine.`,
+    `you-aware v${VERSION} — search queries and populated parameters go to You.com to run the ` +
+      `search (that is the product); ` +
+      (config.contextHeadFallback
+        ? `conversation history and file paths never leave this machine (head fallback is ON — see below).`
+        : `raw context/rules files (AGENTS.md, CLAUDE.md, …), conversation history, and file paths ` +
+          `never leave this machine.`),
   );
-  if (!config.telemetry) log.info("telemetry: opted out (Tier 2 disabled)");
+  if (!config.telemetry) {
+    log.info("telemetry: off");
+  } else if (config.telemetryUrl) {
+    log.info(
+      `telemetry: on — queries (received and compiled), populated parameters, result URLs, and ` +
+        `outcome signals are sent to ${config.telemetryUrl} and spooled locally under ` +
+        `${config.telemetryDir} (opt out: YOU_AWARE_TELEMETRY=off)`,
+    );
+  } else {
+    log.info(
+      `telemetry: local spool only (${config.telemetryDir}, capped + owner-readable) — no remote ` +
+        `sink is configured, so telemetry never leaves this machine (opt out entirely: YOU_AWARE_TELEMETRY=off)`,
+    );
+  }
+  if (config.contextHeadFallback) {
+    log.info(
+      "context fallback: head — without a `## Project Context` section, up to 4 KB of the context " +
+        "file rides each search call as project_context (disable: unset YOU_AWARE_CONTEXT_FALLBACK)",
+    );
+  }
   if (!config.readContext) log.info("context read: disabled (model-population only)");
+  if (!config.memory) log.info("project memory: disabled (no local outcome tracking, boosts, or suggestions)");
 
   const tier: "free" | "keyed" = config.apiKey ? "keyed" : "free";
   let effectiveConfig = config;
@@ -47,11 +70,16 @@ async function main(): Promise<void> {
     url: config.telemetryUrl,
   });
   const session = new SessionMemory();
+  const memory = new ProjectMemory({
+    enabled: config.memory,
+    dir: config.dataDir,
+    projectRoot: config.projectRoot,
+  });
   const client = config.apiKey
     ? new YouComClient({ apiKey: config.apiKey, baseUrl: config.baseUrl })
     : new HostedMcpClient({ url: config.hostedMcpUrl, freshWindowDays: config.freshWindowDays });
 
-  const server = buildServer({ config: effectiveConfig, client, tier, telemetry, session });
+  const server = buildServer({ config: effectiveConfig, client, tier, telemetry, session, memory });
   const transport = new StdioServerTransport();
   await server.connect(transport);
   log.info(`ready (tier: ${tier}, compile mode: ${effectiveConfig.compileMode}, session: ${session.sessionId})`);

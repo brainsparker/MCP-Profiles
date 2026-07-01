@@ -131,8 +131,11 @@ export class HostedMcpClient implements SearchClient {
     }
     if (result.isError) {
       const text = textOf(result);
-      if (RATE_LIMIT_SIGNS.test(text)) throw new Error(`${text}\n\n${UPGRADE_HINT}`);
-      throw new Error(`You.com hosted search error: ${text.slice(0, 300)}`);
+      // Status line first, upstream text below — telemetry keeps only line 1.
+      if (RATE_LIMIT_SIGNS.test(text)) {
+        throw new Error(`You.com hosted search error (rate limited)\n${text.slice(0, 300)}\n\n${UPGRADE_HINT}`);
+      }
+      throw new Error(`You.com hosted search error\n${text.slice(0, 300)}`);
     }
     return extractHits(result);
   }
@@ -168,14 +171,18 @@ function textOf(result: CallToolResult): string {
 export function extractHits(result: CallToolResult): SearchHit[] {
   const sc = result.structuredContent as Record<string, unknown> | undefined;
   if (!sc) return [];
+  const results = sc.results;
+  if (results && typeof results === "object" && !Array.isArray(results)) {
+    const web = (results as Record<string, unknown>).web;
+    // A present results.web is authoritative — a legitimately empty web
+    // section must return [], never fall through to a sibling vertical
+    // (news, related_searches) and pass it off as web results.
+    if (Array.isArray(web)) return toHits(web);
+  }
   const candidates: unknown[][] = [];
   const push = (v: unknown): void => {
     if (Array.isArray(v)) candidates.push(v);
   };
-  const results = sc.results;
-  if (results && typeof results === "object" && !Array.isArray(results)) {
-    push((results as Record<string, unknown>).web);
-  }
   const collect = (v: unknown, depth: number): void => {
     if (Array.isArray(v)) {
       push(v);

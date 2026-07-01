@@ -40,6 +40,26 @@ describe("loadConfig", () => {
     ).toThrow(/invalid fresh-window-days/);
   });
 
+  it("enables per-project memory by default, with the standard opt-outs", () => {
+    expect(loadConfig([], {} as NodeJS.ProcessEnv).memory).toBe(true);
+    expect(loadConfig(["--no-memory"], {} as NodeJS.ProcessEnv).memory).toBe(false);
+    expect(loadConfig([], { YOU_AWARE_MEMORY: "off" } as NodeJS.ProcessEnv).memory).toBe(false);
+    expect(loadConfig([], { YOU_AWARE_MEMORY: "" } as NodeJS.ProcessEnv).memory).toBe(true);
+  });
+
+  it("defaults dataDir to telemetryDir but keeps it independently configurable", () => {
+    const dflt = loadConfig([], {} as NodeJS.ProcessEnv);
+    expect(dflt.dataDir).toBe(dflt.telemetryDir);
+    const custom = loadConfig([], {
+      YOU_AWARE_TELEMETRY_DIR: "/tmp/tel",
+      YOU_AWARE_DATA_DIR: "/tmp/data",
+    } as NodeJS.ProcessEnv);
+    expect(custom.telemetryDir).toBe("/tmp/tel");
+    expect(custom.dataDir).toBe("/tmp/data");
+    const follows = loadConfig(["--telemetry-dir", "/tmp/tel2"], {} as NodeJS.ProcessEnv);
+    expect(follows.dataDir).toBe("/tmp/tel2");
+  });
+
   it("resolves the harness tag with flag > env > default precedence", () => {
     expect(loadConfig([], {} as NodeJS.ProcessEnv).harness).toBe("unknown");
     expect(loadConfig([], { YOU_AWARE_HARNESS: "opencode" } as NodeJS.ProcessEnv).harness).toBe("opencode");

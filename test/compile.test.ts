@@ -48,7 +48,6 @@ describe("compileQuery (PRD §8.2 / §9.3)", () => {
     expect(c.vocabularyInjected).toEqual(["typescript", "date-fns"]);
     expect(c.decisionsApplied).toEqual(["moment.js rejected → -moment"]);
     expect(c.trustedBoost).toEqual(["react.dev", "tanstack.com"]);
-    expect(c.trustedNarrowed).toBe(false);
   });
 
   it("gates vocabulary on topical relevance (no @tanstack/query on a date query)", () => {
@@ -85,17 +84,21 @@ describe("compileQuery (PRD §8.2 / §9.3)", () => {
     expect(c.vocabularyInjected).toEqual([]);
   });
 
-  it("operators mode compiles sources and freshness into portable operators", () => {
+  it("operators mode compiles blocked sources and freshness — but never narrows on trusted", () => {
     const c = compileQuery(
       "date parsing",
       { ...params, freshness: "fresh" },
       [],
       { mode: "operators", ...OPTS },
     );
-    expect(c.query).toContain("(site:react.dev OR site:tanstack.com)");
+    // trusted_sources are boost semantics: a positive site: group would turn
+    // the boost into a hard whitelist and zero out off-domain answers. The
+    // rank-time partition carries the boost instead.
+    expect(c.query).not.toContain("site:react.dev");
+    expect(c.query).not.toContain("site:tanstack.com");
     expect(c.query).toContain("-site:w3schools.com");
     expect(c.query).toMatch(/after:\d{4}-\d{2}-\d{2}/);
-    expect(c.trustedNarrowed).toBe(true);
+    expect(c.trustedBoost).toEqual(["react.dev", "tanstack.com"]);
     expect(c.blockedApplied).toEqual(["w3schools.com"]);
   });
 
@@ -127,7 +130,7 @@ describe("compileQuery (PRD §8.2 / §9.3)", () => {
 
   it("guards short rejected terms (qs, ws) the content tokenizer drops", () => {
     const qsDecision = parseDecisionLine(
-      "- Rejected qs in favor of URLSearchParams for query string parsing.",
+      "- Rejected `qs` in favor of URLSearchParams for query string parsing.",
     ) as Decision;
     const c = compileQuery("migrate from qs to URLSearchParams", params, [qsDecision], {
       mode: "auto",
@@ -144,9 +147,8 @@ describe("compileQuery (PRD §8.2 / §9.3)", () => {
       [],
       { mode: "operators", ...OPTS },
     );
-    // Query already narrows with site: — no second site: group.
+    // The query's own site: narrowing is the agent's choice — left untouched.
     expect(c.query.match(/site:react\.dev/g)).toHaveLength(1);
-    expect(c.trustedNarrowed).toBe(false);
     // Blocked negation for an unrelated domain still applies.
     expect(c.query).toContain("-site:w3schools.com");
   });

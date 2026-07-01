@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { Config } from "../src/config.js";
+import { ProjectMemory } from "../src/memory.js";
 import { buildServer } from "../src/server.js";
 import { SessionMemory } from "../src/session.js";
 import { Telemetry } from "../src/telemetry.js";
@@ -62,11 +64,22 @@ function makeConfig(root: string, tDir: string): Config {
     harness: "test-harness",
     telemetry: true,
     telemetryDir: tDir,
+    memory: true,
+    dataDir: tDir,
+    contextHeadFallback: false,
     compileMode: "auto",
     freshWindowDays: 180,
     count: 10,
     hostedMcpUrl: "https://api.you.com/mcp",
   };
+}
+
+function makeMemory(config: Config): ProjectMemory {
+  return new ProjectMemory({
+    enabled: config.memory,
+    dir: config.dataDir,
+    projectRoot: config.projectRoot,
+  });
 }
 
 async function connect(s: ReturnType<typeof buildServer>): Promise<Client> {
@@ -88,6 +101,7 @@ beforeAll(async () => {
     tier: "keyed",
     telemetry: new Telemetry({ enabled: true, dir: telemetryDir }),
     session: new SessionMemory(),
+    memory: makeMemory(makeConfig(projectRoot, telemetryDir)),
   });
   client = await connect(server);
 });
@@ -98,10 +112,11 @@ afterAll(async () => {
 });
 
 describe("you-aware e2e", () => {
-  it("exposes exactly one tool — search — with query plus the four Product A parameters", async () => {
+  it("exposes search (query + the four Product A parameters) and report_outcome", async () => {
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name)).toEqual(["search"]);
-    const props = Object.keys((tools[0]!.inputSchema as { properties: object }).properties);
+    expect(tools.map((t) => t.name).sort()).toEqual(["report_outcome", "search"]);
+    const search = tools.find((t) => t.name === "search")!;
+    const props = Object.keys((search.inputSchema as { properties: object }).properties);
     expect(props.sort()).toEqual(
       ["blocked_sources", "freshness", "project_context", "query", "trusted_sources"].sort(),
     );
@@ -202,13 +217,46 @@ describe("you-aware e2e", () => {
     expect(decomposition.tier).toBe("keyed");
   });
 
-  it("keeps Tier 1 out of telemetry: no file paths, no raw harness file", () => {
+  it("keeps Tier 1 out of telemetry: no file paths, no raw harness file, no memory-store hash", () => {
     const raw = readFileSync(join(telemetryDir, "telemetry.jsonl"), "utf8");
     expect(raw).not.toContain("AGENTS.md");
     expect(raw).not.toContain("CLAUDE.md");
     expect(raw).not.toContain(projectRoot);
     expect(raw).not.toContain("## Trusted Sources");
     expect(raw).not.toContain("claude-code");
+    const hash = createHash("sha256").update(projectRoot).digest("hex").slice(0, 16);
+    expect(raw).not.toContain(hash);
+    expect(raw).not.toContain("projects/");
+  });
+
+  it("records only the status line in error telemetry — never upstream response bodies", async () => {
+    const root = mkdtempSync(join(tmpdir(), "you-aware-err-"));
+    const tDir = mkdtempSync(join(tmpdir(), "you-aware-err-events-"));
+    writeFileSync(join(root, "AGENTS.md"), AGENTS_MD);
+    const failing: SearchClient = {
+      async search() {
+        throw new Error('You.com Search API error 500\n{"error":"quota exceeded for account ACCT-SECRET-9931"}');
+      },
+    };
+    const cfg = makeConfig(root, tDir);
+    const s = buildServer({
+      config: cfg,
+      client: failing,
+      tier: "keyed",
+      telemetry: new Telemetry({ enabled: true, dir: tDir }),
+      session: new SessionMemory(),
+      memory: makeMemory(cfg),
+    });
+    const c = await connect(s);
+    const res = (await c.callTool({ name: "search", arguments: { query: "react suspense" } })) as CallToolResult;
+    expect(res.isError).toBe(true);
+    const raw = readFileSync(join(tDir, "telemetry.jsonl"), "utf8");
+    expect(raw).not.toContain("ACCT-SECRET-9931");
+    const event = JSON.parse(raw.trim().split("\n").at(-1)!);
+    expect(event.type).toBe("error");
+    expect(event.error).toBe("You.com Search API error 500");
+    await c.close();
+    await s.close();
   });
 
   it("carries explicit-section project_context in telemetry, with its source and length", () => {
@@ -221,36 +269,69 @@ describe("you-aware e2e", () => {
     expect(search.context_source).toBe("agents-md");
   });
 
-  it("redacts fallback-derived project_context from telemetry (§8.3: file head is Tier 1)", async () => {
-    const root = mkdtempSync(join(tmpdir(), "you-aware-fallback-head-"));
-    const tDir = mkdtempSync(join(tmpdir(), "you-aware-fallback-head-events-"));
+  it("never sends the file head anywhere by default (no ## Project Context section)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "you-aware-no-head-"));
+    const tDir = mkdtempSync(join(tmpdir(), "you-aware-no-head-events-"));
     writeFileSync(
       join(root, "AGENTS.md"),
       "# Secret Project Notes\nInternal roadmap: the SECRET-CODENAME launch.\n\n## Trusted Sources\n- react.dev\n",
     );
-    const headFake = new FakeClient();
+    const plainFake = new FakeClient();
     const s = buildServer({
       config: makeConfig(root, tDir),
-      client: headFake,
+      client: plainFake,
       tier: "keyed",
       telemetry: new Telemetry({ enabled: true, dir: tDir }),
       session: new SessionMemory(),
+      memory: makeMemory(makeConfig(root, tDir)),
     });
     const c = await connect(s);
     await c.callTool({ name: "search", arguments: { query: "react suspense data fetching" } });
 
-    // The search call itself still carries the fallback head (the product path)…
-    expect(headFake.requests.at(-1)!.params.project_context).toContain("SECRET-CODENAME");
-
-    // …but the Tier 2 event carries only its source label and length.
+    // Neither the search call nor telemetry carries the raw head.
+    expect(plainFake.requests.at(-1)!.params.project_context).toBeUndefined();
+    expect(plainFake.requests.at(-1)!.params.trusted_sources).toEqual(["react.dev"]);
     const raw = readFileSync(join(tDir, "telemetry.jsonl"), "utf8");
     expect(raw).not.toContain("SECRET-CODENAME");
+    expect(JSON.parse(raw.trim().split("\n").at(-1)!).project_context_source).toBe("none");
+    await c.close();
+    await s.close();
+  });
+
+  it("redacts opt-in file-head project_context from telemetry end to end (§8.3: file head is Tier 1)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "you-aware-fallback-head-"));
+    const tDir = mkdtempSync(join(tmpdir(), "you-aware-fallback-head-events-"));
+    writeFileSync(
+      join(root, "AGENTS.md"),
+      "# Secret Project Notes\nTypeScript app; internal SDK acme-internal-sdk everywhere.\nThe SECRET-CODENAME launch.\n\n## Trusted Sources\n- react.dev\n",
+    );
+    const cfg: Config = { ...makeConfig(root, tDir), contextHeadFallback: true };
+    const headFake = new FakeClient();
+    const s = buildServer({
+      config: cfg,
+      client: headFake,
+      tier: "keyed",
+      telemetry: new Telemetry({ enabled: true, dir: tDir }),
+      session: new SessionMemory(),
+      memory: makeMemory(cfg),
+    });
+    const c = await connect(s);
+    // "sdk" overlaps the head's acme-internal-sdk line, so vocabulary
+    // injection would copy the internal name into the compiled query.
+    await c.callTool({ name: "search", arguments: { query: "sdk error handling patterns" } });
+
+    // The search call carries the opted-in fallback head…
+    expect(headFake.requests.at(-1)!.params.project_context).toContain("SECRET-CODENAME");
+
+    // …but no telemetry field leaks head content — not even query_compiled.
+    const raw = readFileSync(join(tDir, "telemetry.jsonl"), "utf8");
+    expect(raw).not.toContain("SECRET-CODENAME");
+    expect(raw).not.toContain("acme-internal-sdk");
     const event = JSON.parse(raw.trim().split("\n").at(-1)!);
     expect(event.project_context_source).toBe("file-head");
     expect(event.project_context_chars).toBeGreaterThan(0);
     expect(event.params_file.project_context).toBeUndefined();
     expect(event.params_final.project_context).toBeUndefined();
-    expect(event.params_file.trusted_sources).toEqual(["react.dev"]);
     await c.close();
     await s.close();
   });
@@ -265,6 +346,7 @@ describe("you-aware e2e", () => {
       tier: "keyed",
       telemetry: new Telemetry({ enabled: false, dir: telemetryDir }),
       session: new SessionMemory(),
+      memory: makeMemory(makeConfig(root, telemetryDir)),
     });
     const c = await connect(s);
     await c.callTool({ name: "search", arguments: { query: "react query caching strategy" } });
@@ -284,6 +366,7 @@ describe("you-aware e2e", () => {
       tier: "keyed",
       telemetry: new Telemetry({ enabled: false, dir: telemetryDir }),
       session: new SessionMemory(),
+      memory: makeMemory(makeConfig(root, telemetryDir)),
     });
     const c = await connect(s);
     await c.callTool({ name: "search", arguments: { query: "react query caching strategy" } });
@@ -305,6 +388,7 @@ describe("you-aware e2e", () => {
       tier: "keyed",
       telemetry: new Telemetry({ enabled: false, dir: telemetryDir }),
       session: new SessionMemory(),
+      memory: makeMemory(makeConfig(child, telemetryDir)),
     });
     const c = await connect(s);
     await c.callTool({ name: "search", arguments: { query: "react query caching strategy" } });
@@ -321,6 +405,7 @@ describe("you-aware e2e", () => {
       tier: "free",
       telemetry: new Telemetry({ enabled: false, dir: telemetryDir }),
       session: new SessionMemory(),
+      memory: makeMemory({ ...makeConfig(projectRoot, telemetryDir), apiKey: undefined, compileMode: "operators" }),
     });
     const c = await connect(keyless);
     const res = (await c.callTool({
@@ -332,10 +417,12 @@ describe("you-aware e2e", () => {
     const sc = res.structuredContent as { kind: string; trace: Record<string, unknown> };
     expect(sc.kind).toBe("results");
     expect(sc.trace.tier).toBe("free");
-    // Context reaches the free tier compiled into the query (site: narrowing),
-    // never as native parameters.
-    expect(String(sc.trace.query_compiled)).toContain("(site:react.dev OR site:tanstack.com)");
+    // Context reaches the free tier compiled into the query (blocked-source
+    // negations) plus the client-side rank boost — trusted sources are never
+    // compiled into a positive site: whitelist, and no native params are sent.
+    expect(String(sc.trace.query_compiled)).not.toContain("site:react.dev");
     expect(String(sc.trace.query_compiled)).toContain("-site:w3schools.com");
+    expect((sc.trace.post_rank_top_3 as string[])[0]).toContain("react.dev");
     const req = freeFake.requests.at(-1)!;
     expect(req.sendNativeParams).toBe(false);
 
@@ -350,5 +437,133 @@ describe("you-aware e2e", () => {
     expect(freeFake.requests.at(-1)!.params.freshness).toBe("fresh");
     await c.close();
     await keyless.close();
+  });
+
+  it("ignores report_outcome URLs that were never shown this session", async () => {
+    const res = (await client.callTool({
+      name: "report_outcome",
+      arguments: {
+        cited_urls: ["https://react.dev/learn/dates", "https://never-shown.example.com/x"],
+      },
+    })) as CallToolResult;
+    const sc = res.structuredContent as {
+      kind: string;
+      recorded_domains: string[];
+      ignored_urls: string[];
+    };
+    expect(sc.kind).toBe("outcome_ack");
+    expect(sc.recorded_domains).toEqual(["react.dev"]);
+    expect(sc.ignored_urls).toEqual(["https://never-shown.example.com/x"]);
+  });
+
+  it("closes the memory loop: cited domains earn a rank boost and a trusted-source suggestion", async () => {
+    const root = mkdtempSync(join(tmpdir(), "you-aware-loop-"));
+    const dataDir = mkdtempSync(join(tmpdir(), "you-aware-loop-data-"));
+    writeFileSync(join(root, "AGENTS.md"), "## Trusted Sources\n- react.dev\n");
+    const cfg = makeConfig(root, dataDir);
+    const LOOP_HITS: SearchHit[] = [
+      { url: "https://stackoverflow.com/q/1", title: "SO", snippet: "" },
+      { url: "https://blog.example.com/a", title: "Blog", snippet: "" },
+      { url: "https://react.dev/learn", title: "React", snippet: "" },
+    ];
+
+    // One harness session = one server process sharing the on-disk store.
+    const runSession = async (outcomeCalls: number) => {
+      const s = buildServer({
+        config: cfg,
+        client: { search: async () => LOOP_HITS },
+        tier: "keyed",
+        telemetry: new Telemetry({ enabled: true, dir: dataDir }),
+        session: new SessionMemory(),
+        memory: makeMemory(cfg),
+      });
+      const c = await connect(s);
+      await c.callTool({ name: "search", arguments: { query: "react suspense data fetching" } });
+      let lastOutcome: CallToolResult | undefined;
+      for (let i = 0; i < outcomeCalls; i++) {
+        lastOutcome = (await c.callTool({
+          name: "report_outcome",
+          arguments: { cited_urls: ["https://blog.example.com/a"] },
+        })) as CallToolResult;
+      }
+      const secondSearch = (await c.callTool({
+        name: "search",
+        arguments: { query: "typescript generics variance" },
+      })) as CallToolResult;
+      await c.close();
+      await s.close();
+      return { lastOutcome, secondSearch };
+    };
+
+    // Session 1: 2 citations, but a single session — no boost, no suggestion yet.
+    const first = await runSession(2);
+    expect(first.lastOutcome!.structuredContent).not.toHaveProperty("context_suggestions");
+    const firstTrace = (first.secondSearch.structuredContent as { trace: { memory_boost: string[] } }).trace;
+    expect(firstTrace.memory_boost).toEqual([]);
+
+    // Session 2: third citation in a second session crosses the suggestion threshold.
+    const second = await runSession(1);
+    const ack = second.lastOutcome!.structuredContent as { context_suggestions: unknown[] };
+    expect(ack.context_suggestions).toEqual([
+      expect.objectContaining({
+        action: "add_trusted_source",
+        domain: "blog.example.com",
+        section: "## Trusted Sources",
+        line: "- blog.example.com",
+        evidence: "cited 3 times across 2 sessions",
+      }),
+    ]);
+    const ackText = (second.lastOutcome!.content as { text: string }[]).map((c) => c.text).join("\n");
+    expect(ackText).toContain('add "- blog.example.com" to ## Trusted Sources');
+
+    // And the boost now applies: blog.example.com jumps ahead of the middle tier.
+    const sc = second.secondSearch.structuredContent as {
+      results: SearchHit[];
+      trace: { memory_boost: string[] };
+    };
+    expect(sc.trace.memory_boost).toEqual(["blog.example.com"]);
+    expect(sc.results.map((h) => h.url)).toEqual([
+      "https://react.dev/learn", // trusted (file)
+      "https://blog.example.com/a", // preferred (memory)
+      "https://stackoverflow.com/q/1", // middle
+    ]);
+
+    // Once the agent applies the edit, the suggestion flips to accepted and goes quiet.
+    writeFileSync(join(root, "AGENTS.md"), "## Trusted Sources\n- react.dev\n- blog.example.com\n");
+    const third = await runSession(1);
+    expect(third.lastOutcome!.structuredContent).not.toHaveProperty("context_suggestions");
+    const events = readFileSync(join(dataDir, "telemetry.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+    expect(events.some((e) => e.type === "suggestion_emitted" && e.suggestion_domain === "blog.example.com")).toBe(true);
+    expect(events.some((e) => e.type === "suggestion_accepted" && e.suggestion_domain === "blog.example.com")).toBe(true);
+    expect(events.some((e) => e.type === "outcome" && e.cited_domains?.includes("blog.example.com"))).toBe(true);
+  });
+
+  it("disables the whole memory surface with memory: false — one tool, no disk, empty boost", async () => {
+    const root = mkdtempSync(join(tmpdir(), "you-aware-nomem-"));
+    const dataDir = mkdtempSync(join(tmpdir(), "you-aware-nomem-data-"));
+    writeFileSync(join(root, "AGENTS.md"), AGENTS_MD);
+    const cfg: Config = { ...makeConfig(root, dataDir), memory: false };
+    const s = buildServer({
+      config: cfg,
+      client: new FakeClient(),
+      tier: "keyed",
+      telemetry: new Telemetry({ enabled: false, dir: dataDir }),
+      session: new SessionMemory(),
+      memory: makeMemory(cfg),
+    });
+    const c = await connect(s);
+    const { tools } = await c.listTools();
+    expect(tools.map((t) => t.name)).toEqual(["search"]);
+    const res = (await c.callTool({
+      name: "search",
+      arguments: { query: "react query caching strategy" },
+    })) as CallToolResult;
+    expect((res.structuredContent as { trace: { memory_boost: string[] } }).trace.memory_boost).toEqual([]);
+    expect(existsSync(join(dataDir, "projects"))).toBe(false);
+    await c.close();
+    await s.close();
   });
 });

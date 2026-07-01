@@ -109,9 +109,13 @@ describe("YouComClient", () => {
     expect(h.urls).toHaveLength(2);
   });
 
-  it("does not retry other 4xx errors", async () => {
+  it("does not retry other 4xx errors, and keeps the body off the first line", async () => {
     const h = harness([new Response("bad request", { status: 400 })]);
-    await expect(h.client.search(req())).rejects.toThrow(/400: bad request/);
+    const err = await h.client.search(req()).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    // Status on line 1 (all telemetry ever sees), body below for humans.
+    expect((err as Error).message.split("\n")[0]).toBe("You.com Search API error 400");
+    expect((err as Error).message).toContain("bad request");
     expect(h.urls).toHaveLength(1);
     expect(h.sleeps).toHaveLength(0);
   });
@@ -151,5 +155,48 @@ describe("parseHits", () => {
     expect(parseHits({ hits: [{ title: "no url" }, 42, null] })).toEqual([]);
     expect(parseHits("garbage")).toEqual([]);
     expect(parseHits(null)).toEqual([]);
+  });
+
+  it("parses non-array hits/results.web shapes as empty instead of throwing", () => {
+    expect(parseHits({ hits: { total: 0 } })).toEqual([]);
+    expect(parseHits({ results: { web: { count: 0 } } })).toEqual([]);
+  });
+});
+
+describe("base URL handling", () => {
+  it("keeps the path component of a gateway base URL", async () => {
+    const urls: URL[] = [];
+    const fetchImpl = (async (url: URL | RequestInfo) => {
+      urls.push(new URL(String(url)));
+      return new Response(okBody);
+    }) as typeof fetch;
+    const client = new YouComClient(
+      { apiKey: "k", baseUrl: "https://gateway.corp/youcom/v1" },
+      fetchImpl,
+    );
+    await client.search(req());
+    expect(urls[0]!.pathname).toBe("/youcom/v1/search");
+  });
+});
+
+describe("body-phase timeout", () => {
+  it("aborts a response whose body stalls after headers arrive", async () => {
+    const fetchImpl = (async (_url: URL | RequestInfo, init?: RequestInit) => {
+      // Headers arrive instantly; the body never does — until the signal fires.
+      const body = new Promise<string>((_, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          const err = new Error("aborted");
+          err.name = "AbortError";
+          reject(err);
+        });
+      });
+      return { ok: true, status: 200, headers: new Headers(), text: () => body } as unknown as Response;
+    }) as typeof fetch;
+    const client = new YouComClient(
+      { apiKey: "k", baseUrl: "https://api.ydc-index.io", timeoutMs: 10, maxAttempts: 1 },
+      fetchImpl,
+      async () => {},
+    );
+    await expect(client.search(req())).rejects.toThrow(/timed out after 10ms/);
   });
 });

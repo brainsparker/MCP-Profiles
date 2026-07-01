@@ -1,6 +1,6 @@
-# Search API context-aware parameters (Product A contract)
+# Search API context-aware parameters
 
-Four optional parameters on the You.com Search API that change retrieval behavior based on caller-supplied context. This is the durable, monetizable surface: the contract lands on the live wrapped product now and carries forward to the owned substrate — and into the Decomposed-tier SDK — unchanged.
+Four optional parameters on the You.com Search API that change retrieval behavior based on caller-supplied context. This is the durable contract: it applies to the current Search API and is designed to carry forward unchanged as the backend evolves.
 
 **Compatibility guarantee:** all parameters are optional and independent. Default behavior with all parameters omitted is exactly today's Search API behavior. No regression.
 

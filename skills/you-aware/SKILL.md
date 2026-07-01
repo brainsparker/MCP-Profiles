@@ -1,6 +1,6 @@
 ---
 name: you-aware
-description: Guidance for projects where the you-aware context-aware web search tool is available. Use when (1) researching anything on the web — library or framework choices, current documentation, API or version changes, anything time-sensitive — so the search call carries the project's context, and (2) immediately after a technology choice is made, reversed, or rejected in this project, so AGENTS.md records it in a form future searches can use.
+description: Guidance for projects where the you-aware context-aware web search tool is available. Use when (1) researching anything on the web — library or framework choices, current documentation, API or version changes, anything time-sensitive — so the search call carries the project's context, (2) after using search results in an answer or change, so report_outcome feeds the project's local retrieval memory, and (3) immediately after a technology choice is made, reversed, or rejected in this project, so AGENTS.md records it in a form future searches can use.
 license: MIT
 ---
 
@@ -8,7 +8,7 @@ license: MIT
 
 This project has the you-aware `search` tool available (an MCP server — your client may expose it under a namespaced id such as `you-aware_search`). It is web search that already knows the project: at call time the server reads the project's context file (`AGENTS.md` first; `CLAUDE.md`, `GEMINI.md`, Copilot/Cursor/Cline/Windsurf rules files as fallbacks), parses trusted/blocked sources, prior decisions, project context, and freshness preference, merges those with whatever parameters you supply, compiles the query into lexical form, and returns ranked results plus a trace of exactly what ran.
 
-This skill covers both halves of that loop: calling the tool well, and keeping the context file it reads accurate.
+This skill covers the whole loop: calling the tool well, reporting which results you actually used (the `report_outcome` tool — it powers the project's local retrieval memory), and keeping the context file the server reads accurate.
 
 ## When to reach for the search tool
 
@@ -28,6 +28,24 @@ Pass `query` plus any of the four optional parameters. The server merges your va
 - `freshness`: `"fresh"` for fast-moving topics (new releases, security advisories), `"stable"` for evergreen concepts, `"any"` or omit otherwise. Overrides the file's default per call.
 
 Write queries with one retrieval intent each. Lexical, operator-shaped queries (quotes, `site:`, `-term`) pass through untouched; natural-language queries get compiled.
+
+## Report which results you used
+
+After you cite or act on search results — in an answer, a commit, a code change — call the `report_outcome` tool once for the task, passing the exact result URLs you actually used:
+
+```json
+{ "cited_urls": ["https://react.dev/learn/dates", "https://tanstack.com/query/latest"] }
+```
+
+This feeds the project's local retrieval memory (the store stays on the machine; cited domains also appear in telemetry unless `YOU_AWARE_TELEMETRY=off`): domains that keep proving useful across sessions get a soft rank boost on future searches, and with enough evidence the server proposes adding them to `## Trusted Sources`. Only URLs that search actually returned this session are counted, so pass them exactly as returned. Skipping the call does no harm — it just leaves the next search no smarter than the last one.
+
+## Applying context_suggestions
+
+When a `search` or `report_outcome` response carries `context_suggestions`, the server has accumulated real evidence (e.g. "cited 4 times across 3 sessions") that a domain belongs in the context file. Apply each suggestion in the same turn: add the suggestion's `line` verbatim under its `section` (creating the section if missing). If the user has previously declined a domain, do not re-apply it — instead pass it back in `rejected_suggestions` on your next `report_outcome` call so it is never suggested again:
+
+```json
+{ "cited_urls": ["https://react.dev/learn"], "rejected_suggestions": ["example-blog.com"] }
+```
 
 ## Handling a decomposition_request
 
@@ -96,7 +114,8 @@ A single default: `fresh`, `stable`, or `any`. The model can override it per cal
 Update `AGENTS.md` in the same turn when:
 
 - A technology choice is made, reversed, or rejected → add or amend a `## Decisions` line in one of the recognized shapes above.
-- Results from a domain repeatedly prove good or bad → add it to `## Trusted Sources` or `## Blocked Sources`.
+- The server emits a `context_suggestions` entry → apply it (this is the primary signal for `## Trusted Sources`; it is backed by cited-result evidence you reported via `report_outcome`).
+- Results from a domain repeatedly prove bad → add it to `## Blocked Sources` (the server does not suggest blocks; that judgment stays with you).
 - The stack or focus shifts (new framework, major version bump) → update `## Project Context`.
 
 If a section is missing, add it. This is what makes the next search better than the last one.

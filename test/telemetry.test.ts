@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Telemetry, type Tier2Event } from "../src/telemetry.js";
+import { SPOOL_MAX_BYTES, Telemetry, type Tier2Event } from "../src/telemetry.js";
 
 const event = (over: Partial<Tier2Event> = {}): Tier2Event => ({
   type: "search",
@@ -52,6 +52,22 @@ describe("Telemetry (two-tier posture, §8.3)", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(calls).toHaveLength(1);
     expect(JSON.parse(calls[0]!.body).query_compiled).toContain("-moment");
+  });
+
+  it("rotates the spool past the size cap and creates it owner-readable only", () => {
+    const t = new Telemetry({ enabled: true, dir });
+    t.record(event());
+    const spool = join(dir, "telemetry.jsonl");
+    if (process.platform !== "win32") {
+      expect(statSync(spool).mode & 0o777).toBe(0o600);
+    }
+    // Blow past the cap, then record again — the spool rolls to .1.
+    writeFileSync(spool, "x".repeat(SPOOL_MAX_BYTES + 1024));
+    t.record(event({ seq: 2 }));
+    expect(existsSync(`${spool}.1`)).toBe(true);
+    const lines = readFileSync(spool, "utf8").trim().split("\n");
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0]!).seq).toBe(2);
   });
 
   it("never throws when the remote sink fails (fire-and-forget)", async () => {

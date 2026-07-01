@@ -12,6 +12,8 @@ export interface Trace {
   query_compiled: string;
   trusted_sources_boost: string[];
   blocked_sources_applied: string[];
+  /** Domains soft-boosted from per-project memory (cited across prior sessions). */
+  memory_boost: string[];
   decisions_applied: string[];
   project_context_chars: number;
   freshness: Freshness | "default";
@@ -32,6 +34,7 @@ export function formatTrace(t: Trace): string {
     `  query_compiled: ${quote(t.query_compiled)}`,
     `  trusted_sources_boost: ${list(t.trusted_sources_boost)}`,
     `  blocked_sources_applied: ${list(t.blocked_sources_applied)}`,
+    `  memory_boost: ${list(t.memory_boost)}`,
     `  decisions_applied: ${list(t.decisions_applied.map(quote))}`,
     `  project_context_chars: ${t.project_context_chars}`,
     `  freshness: ${quote(t.freshness)}`,

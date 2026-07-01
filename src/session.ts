@@ -35,7 +35,18 @@ function jaccard(a: Set<string>, b: Set<string>): number {
 export class SessionMemory {
   readonly sessionId: string = randomUUID();
   private readonly seen: Set<string>[] = [];
+  private readonly shownUrls = new Set<string>();
   private duplicates = 0;
+
+  /** Remember which result URLs were shown this session (outcome validation). */
+  recordShown(urls: string[]): void {
+    for (const url of urls) this.shownUrls.add(url);
+  }
+
+  /** Was this exact URL shown this session? Gates report_outcome citations. */
+  wasShown(url: string): boolean {
+    return this.shownUrls.has(url);
+  }
 
   /** Observe a query; report whether it near-duplicates an earlier one this session. */
   observe(query: string): DuplicateCheck {

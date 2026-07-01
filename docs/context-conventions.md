@@ -1,6 +1,6 @@
 # Context file section conventions
 
-`you-aware` reads your project's context file at call time and parses these section conventions into ground-truth search parameters. Discovery walks up from the project root (up to 6 levels, nearest directory wins) checking, in order per directory:
+These are conventions *this server defines* — no other tool parses them today; they exist so parameter population is deterministic and inspectable rather than model-inferred. `you-aware` reads your project's context file at call time and parses them into ground-truth search parameters. Discovery walks up from the project root (up to 6 levels, nearest directory wins) checking, in order per directory:
 
 1. `AGENTS.md` (the open convention)
 2. `CLAUDE.md`
@@ -10,7 +10,7 @@
 6. `.clinerules` (single file, or a directory of `.md` files)
 7. `.windsurfrules`
 
-The first convention with a hit wins; the same parser runs regardless of source, so a `## Trusted Sources` section works in a `.cursorrules` exactly as it does in `AGENTS.md`. **None of the conventions are required** — any context file delivers value (without an explicit `## Project Context` section, the top of the file is used, truncated to 4 KB). The conventions just make the population deterministic and precise.
+The first convention with a hit wins; the same parser runs regardless of source, so a `## Trusted Sources` section works in a `.cursorrules` exactly as it does in `AGENTS.md`. **None of the sections are required** — a file with just `## Trusted Sources` already improves ranking. Free-text `project_context` is derived only from an explicit `## Project Context` section; without one, no file content rides the search call as free text (an opt-in head fallback exists: `YOU_AWARE_CONTEXT_FALLBACK=head`, see [data-handling.md](./data-handling.md)). Fenced code blocks are opaque to the parser — headings inside examples never become live configuration.
 
 Headings are matched case-insensitively at any heading level.
 
@@ -69,6 +69,7 @@ stable
 ## Notes
 
 - Files are read with a 256 KiB per-file cap (oversized files are truncated to the head, with a stderr warning). All `.mdc` rule files are included regardless of their `globs` frontmatter — glob-scoped inclusion is a documented v1 simplification.
-- Without an explicit `## Project Context` section, the file head is used verbatim on the search call (naive truncation — smart slicing is planned for v2.1), and its content is excluded from Tier 2 telemetry (see [data-handling.md](./data-handling.md)). If your context file is long, adding the explicit section is the highest-leverage convention to adopt.
+- Adding an explicit `## Project Context` section is the highest-leverage convention to adopt — it is the only way file content becomes free-text search context by default. (The opt-in `YOU_AWARE_CONTEXT_FALLBACK=head` restores the old top-of-file behavior; even then, the head never enters telemetry.)
+- A rejected option in `## Decisions` must look like an identifier (`moment.js`, `styled-components`, `@tanstack/query`) or be backticked (`` Avoid `lodash` ``) — plain-prose guidance like "Avoid premature optimization" is deliberately ignored, because a wrong `-exclusion` destroys recall.
 - Opt out of file reading entirely with `YOU_AWARE_READ_CONTEXT=off`; the model can still populate every parameter per call.
 - The companion skill in [`skills/you-aware/`](../skills/you-aware) teaches agents these conventions, including when to write them back.

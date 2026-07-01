@@ -1,13 +1,13 @@
 # Evaluation harness
 
-Ablation-controlled evaluation of `you-aware`'s retrieval mechanics, implementing the v0 lexical-compilation ablation (PRD §13) and the §10.1 metric set.
+Ablation-controlled evaluation of `you-aware`'s retrieval mechanics: does compiling harness context into the query measurably beat passing the natural-language question through?
 
 ## Arms
 
 All arms run through the same Search API — the variable is query formulation and parameter use, not the index:
 
 1. **control** — natural-language query passthrough, no parameters
-2. **compiled** — MCP-compiled lexical query (`operators` mode: vocabulary injection, ledger exclusions, `site:`/negation/date operators) plus client-side rank adjustment
+2. **compiled** — MCP-compiled lexical query (`operators` mode: vocabulary injection, ledger exclusions, `-site:` negations, date operators) plus client-side rank adjustment
 3. **compiled+decomposition** — arm 2, plus sub-queries for tasks the multi-hop detector flags. In production the harness's frontier model authors sub-queries; the gold set carries reference sub-queries (`subqueries`) so the ablation is reproducible without a model in the loop.
 
 ## Metrics
@@ -18,11 +18,11 @@ All arms run through the same Search API — the variable is query formulation a
 - **Calls-per-task-completion** — measurable reduction on session-shaped tasks.
 - **Near-duplicate query rate** — reduction vs. the ~32%-of-sessions external baseline (CMU DRGym) in compilation arms.
 
-LLM-judge result-set usefulness (≥ 15% absolute lift) requires the judge calibration co-owned with the substrate eval framework workstream and is out of scope for this runner.
+LLM-judge result-set usefulness is out of scope for this runner (it needs a separately calibrated judge).
 
 ## Gold set
 
-**Composition requirement (§10.1):** 200–300 technical-research tasks, *session-shaped* (multi-call), with the query distribution validated against agent-shape markers (operator density, query length) rather than single natural-language questions. Validating against a human-shaped workload would mis-measure the product.
+**Composition requirement:** 200–300 technical-research tasks, *session-shaped* (multi-call), with the query distribution validated against agent-shape markers (operator density, query length) rather than single natural-language questions. Validating against a human-shaped workload would mis-measure the product.
 
 Format: JSONL, one task per line — see [`goldset.sample.jsonl`](./goldset.sample.jsonl) for the shape:
 

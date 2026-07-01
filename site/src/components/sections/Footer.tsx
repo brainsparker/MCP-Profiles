@@ -3,8 +3,9 @@ import { SITE } from "@/lib/site";
 
 const LINKS = [
   { label: "GitHub", href: SITE.github },
-  { label: "Spec", href: SITE.spec },
   { label: "npm", href: SITE.npm },
+  { label: "Data handling", href: SITE.dataHandling },
+  { label: "Context conventions", href: SITE.conventions },
 ] as const;
 
 export function Footer() {
@@ -18,10 +19,10 @@ export function Footer() {
             <span className="size-2.5 rounded-full bg-brand" />
           </span>
           <span className="font-mono text-sm text-muted-foreground">
-            MCP Profiles — MIT © Brian Sparker
+            you-aware — MIT · built on the You.com Search API
           </span>
         </div>
-        <nav className="flex items-center gap-5 text-sm">
+        <nav className="flex flex-wrap items-center gap-5 text-sm">
           {LINKS.map((l) => (
             <Link
               key={l.label}

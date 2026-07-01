@@ -25,8 +25,6 @@ export interface CompiledQuery {
   query: string;
   /** Domains boosted via the native parameter (and client-side partition). */
   trustedBoost: string[];
-  /** True when site: narrowing operators were emitted (operators mode). */
-  trustedNarrowed: boolean;
   /** Domains compiled to -site: operators or passed to the native filter. */
   blockedApplied: string[];
   /** Human-readable ledger applications, e.g. "moment.js rejected → -moment". */
@@ -208,22 +206,17 @@ export function compileQuery(
 
   const trusted = params.trusted_sources ?? [];
   const blocked = params.blocked_sources ?? [];
-  let trustedNarrowed = false;
   let blockedApplied: string[] = [];
 
   if (opts.mode === "operators") {
-    // Provider-portable compilation: recall-narrowing site: group + negations.
-    // Agent-shaped queries may already carry these operators (§4) — never
+    // Provider-portable compilation: -site: negations for blocked sources.
+    // trusted_sources are BOOST semantics (types.ts) — never compiled into a
+    // positive site: group, which would turn a boost into a hard whitelist
+    // and zero out every query whose answer lives off the trusted domains.
+    // The client-side rank partition (rank.ts) carries the boost instead.
+    // Agent-shaped queries may already carry operators (§4) — never
     // duplicate or contradict what the query itself says.
     const lowerQuery = (): string => query.toLowerCase();
-    const hasPositiveSite = /(^|\s|\()site:/.test(lowerQuery());
-    // Blocked wins on trusted∩blocked overlap, matching rank-time demotion.
-    const narrowable = trusted.filter((d) => !blocked.includes(d));
-    if (narrowable.length > 0 && !hasPositiveSite) {
-      const group = narrowable.slice(0, 4).map((d) => `site:${d}`).join(" OR ");
-      query = narrowable.length > 1 ? `${query} (${group})` : `${query} ${group}`;
-      trustedNarrowed = true;
-    }
     const negations = blocked.slice(0, 6).filter((d) => !lowerQuery().includes(`site:${d}`));
     for (const d of negations) query = `${query} -site:${d}`;
     blockedApplied = negations;
@@ -244,7 +237,6 @@ export function compileQuery(
   return {
     query,
     trustedBoost: trusted,
-    trustedNarrowed,
     blockedApplied,
     decisionsApplied,
     vocabularyInjected,

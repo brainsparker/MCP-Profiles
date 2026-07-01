@@ -275,4 +275,17 @@ describe("extractHits (tolerant hosted response parsing)", () => {
     expect(extractHits({ content: [{ type: "text", text: "no structure" }] })).toEqual([]);
     expect(extractHits({ content: [], structuredContent: { latency: 5 } })).toEqual([]);
   });
+
+  it("treats a present-but-empty results.web as authoritative — never substitutes a sibling vertical", () => {
+    const hits = extractHits({
+      content: [],
+      structuredContent: {
+        results: {
+          web: [],
+          news: [{ url: "https://news.example.com/story", title: "News story", description: "newsy" }],
+        },
+      },
+    });
+    expect(hits).toEqual([]);
+  });
 });

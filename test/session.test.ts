@@ -33,6 +33,15 @@ describe("SessionMemory (anti-loop baseline, v1 telemetry only)", () => {
     expect(s.observe("x y").nearDuplicate).toBe(false);
   });
 
+  it("remembers which result URLs were shown, exact-match only", () => {
+    const s = new SessionMemory();
+    s.recordShown(["https://react.dev/learn", "https://tanstack.com/query"]);
+    s.recordShown(["https://react.dev/reference"]);
+    expect(s.wasShown("https://react.dev/learn")).toBe(true);
+    expect(s.wasShown("https://react.dev/reference")).toBe(true);
+    expect(s.wasShown("https://react.dev/never-shown")).toBe(false);
+  });
+
   it("tracks the session duplicate rate", () => {
     const s = new SessionMemory();
     s.observe("react hooks dependency array");

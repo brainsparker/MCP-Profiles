@@ -2,7 +2,8 @@ import Link from "next/link";
 import { ArrowRight, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CodeBlock } from "@/components/CodeBlock";
-import { SITE, GROWTH_PM_YAML } from "@/lib/site";
+import { InstallCommand } from "@/components/InstallCommand";
+import { SITE, COMPILED_SNIPPET } from "@/lib/site";
 
 export function Hero() {
   return (
@@ -13,29 +14,24 @@ export function Hero() {
         <div>
           <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 font-mono text-xs text-muted-foreground">
             <span className="size-1.5 rounded-full bg-brand" />
-            What comes after MCP?
+            an MCP server · keyless free tier · MIT
           </span>
           <h1 className="mt-6 text-balance text-4xl font-semibold leading-[1.05] tracking-tight sm:text-5xl md:text-6xl">
-            Reusable identity
+            Search that knows
             <br />
-            for your agents.
+            what you&apos;re building.
           </h1>
           <p className="mt-6 max-w-md text-lg text-muted-foreground">
-            MCP standardized how agents connect to tools. MCP Profiles standardize how they{" "}
-            <span className="text-foreground">think, remember, and work</span> — independent of the
-            model.
+            Your agent&apos;s harness already knows your stack, your trusted sources, your past
+            decisions — it&apos;s all in <span className="text-foreground font-mono text-base">AGENTS.md</span>.
+            you-aware compiles that context into every web search.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
-            <Button
-              size="lg"
-              render={<Link href={SITE.quickstart} target="_blank" rel="noreferrer" />}
-            >
-              Get started
-              <ArrowRight className="size-4" />
-            </Button>
+            <InstallCommand />
             <Button
               size="lg"
               variant="outline"
+              nativeButton={false}
               render={<Link href={SITE.github} target="_blank" rel="noreferrer" />}
             >
               <Star className="size-4" />
@@ -43,10 +39,11 @@ export function Hero() {
             </Button>
           </div>
           <p className="mt-6 font-mono text-xs text-muted-foreground">
-            same model <span className="text-brand">·</span> different outcomes
+            no account <span className="text-brand">·</span> no config{" "}
+            <span className="text-brand">·</span> your AGENTS.md is the setup
           </p>
         </div>
-        <CodeBlock filename="profile: growth_pm" code={GROWTH_PM_YAML} />
+        <CodeBlock filename="one search, before → after" code={COMPILED_SNIPPET} />
       </div>
     </section>
   );

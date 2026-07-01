@@ -19,16 +19,24 @@ export function Nav() {
             <span className="size-2.5 rounded-full bg-[#febc2e]" />
             <span className="size-2.5 rounded-full bg-brand" />
           </span>
-          <span className="font-mono text-sm font-semibold tracking-tight">MCP Profiles</span>
+          <span className="font-mono text-sm font-semibold tracking-tight">you-aware</span>
         </Link>
         <div className="ml-auto flex items-center gap-1 text-sm">
           <Link
-            href={SITE.spec}
+            href={SITE.dataHandling}
             target="_blank"
             rel="noreferrer"
             className="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:text-foreground"
           >
-            Docs
+            Data handling
+          </Link>
+          <Link
+            href={SITE.npm}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:text-foreground"
+          >
+            npm
           </Link>
           <Link
             href={SITE.github}

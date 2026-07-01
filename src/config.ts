@@ -21,6 +21,13 @@ export interface Config {
   projectRoot: string;
   /** §8.3: developers can opt out of context-file reading entirely (model-population only). */
   readContext: boolean;
+  /**
+   * Opt-in (YOU_AWARE_CONTEXT_FALLBACK=head): without an explicit
+   * `## Project Context` section, use the top 4 KB of the context file as
+   * project_context on the search call. Off by default — the head is raw file
+   * content, and the search call transmits it.
+   */
+  contextHeadFallback: boolean;
   /** Harness identifier stamped on Tier 2 events (e.g. set by an installer); never auto-detected. */
   harness: string;
   /** §8.3 Tier 2 opt-out flag. */
@@ -28,6 +35,10 @@ export interface Config {
   /** Remote Tier 2 sink. Events always spool locally (JSONL) while telemetry is on. */
   telemetryUrl?: string;
   telemetryDir: string;
+  /** Per-project retrieval memory (Tier 1, local only). Opt-out via --no-memory. */
+  memory: boolean;
+  /** Root for local Tier 1 state (the per-project memory store). Independent of the telemetry opt-out. */
+  dataDir: string;
   compileMode: CompileMode;
   /** Recency window (days) compiled from freshness:"fresh" in operators mode. */
   freshWindowDays: number;
@@ -94,15 +105,22 @@ export function loadConfig(argv: string[] = [], env: NodeJS.ProcessEnv = process
     throw new Error(`invalid compile mode "${compileMode}" (expected auto | operators | native)`);
   }
 
+  const telemetryDir =
+    str("telemetry-dir") ?? nonEmpty(env.YOU_AWARE_TELEMETRY_DIR) ?? join(homedir(), ".you-aware");
+
   return {
     apiKey: str("api-key") ?? nonEmpty(env.YDC_API_KEY) ?? nonEmpty(env.YOU_API_KEY),
     baseUrl: str("base-url") ?? nonEmpty(env.YOU_API_BASE_URL) ?? DEFAULT_BASE_URL,
     projectRoot: str("project-root") ?? nonEmpty(env.YOU_AWARE_PROJECT_ROOT) ?? process.cwd(),
     readContext: args.has("no-context-read") ? false : (envFlag(env.YOU_AWARE_READ_CONTEXT) ?? true),
+    contextHeadFallback:
+      (str("context-fallback") ?? nonEmpty(env.YOU_AWARE_CONTEXT_FALLBACK))?.toLowerCase() === "head",
     harness: str("harness") ?? nonEmpty(env.YOU_AWARE_HARNESS) ?? "unknown",
     telemetry: args.has("no-telemetry") ? false : (envFlag(env.YOU_AWARE_TELEMETRY) ?? true),
     telemetryUrl: str("telemetry-url") ?? nonEmpty(env.YOU_AWARE_TELEMETRY_URL),
-    telemetryDir: str("telemetry-dir") ?? nonEmpty(env.YOU_AWARE_TELEMETRY_DIR) ?? join(homedir(), ".you-aware"),
+    telemetryDir,
+    memory: args.has("no-memory") ? false : (envFlag(env.YOU_AWARE_MEMORY) ?? true),
+    dataDir: str("data-dir") ?? nonEmpty(env.YOU_AWARE_DATA_DIR) ?? telemetryDir,
     compileMode: compileMode as CompileMode,
     freshWindowDays: positiveInt(
       "fresh-window-days",

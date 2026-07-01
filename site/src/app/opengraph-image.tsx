@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 
-export const alt = "MCP Profiles — programmable identity for AI agents";
+export const alt = "you-aware — search that knows what you're building";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -27,12 +27,12 @@ export default function Image() {
             <div style={{ width: 16, height: 16, borderRadius: 999, background: "#febc2e" }} />
             <div style={{ width: 16, height: 16, borderRadius: 999, background: GREEN }} />
           </div>
-          <div style={{ color: "#a1a1a1", fontSize: 26, letterSpacing: -0.5 }}>MCP Profiles</div>
+          <div style={{ color: "#a1a1a1", fontSize: 26, letterSpacing: -0.5 }}>you-aware</div>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", color: GREEN, fontSize: 28, marginBottom: 16 }}>
-            What comes after MCP?
+            context-aware web search for AI agents
           </div>
           <div
             style={{
@@ -45,15 +45,15 @@ export default function Image() {
               letterSpacing: -2,
             }}
           >
-            <span>Reusable identity</span>
-            <span>for your agents.</span>
+            <span>Search that knows</span>
+            <span>what you&apos;re building.</span>
           </div>
         </div>
 
         <div style={{ display: "flex", gap: 10, color: "#8a8a8a", fontSize: 26 }}>
-          <span>same model</span>
+          <span>reads AGENTS.md</span>
           <span style={{ color: GREEN }}>·</span>
-          <span>different outcomes</span>
+          <span>compiles context into every search</span>
         </div>
       </div>
     ),

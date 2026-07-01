@@ -4,10 +4,11 @@ import { z } from "zod";
 import type { Config } from "./config.js";
 import { compileQuery } from "./compile.js";
 import { findContextSource, readContextSource } from "./context/read.js";
-import { parseHarnessContext } from "./context/parse.js";
+import { normalizeDomain, parseHarnessContext } from "./context/parse.js";
 import { decompositionRequest, detectMultiHop } from "./decompose.js";
+import { ProjectMemory, type ContextSuggestion } from "./memory.js";
 import { populateParams, type ParamProvenance } from "./params.js";
-import { postRank } from "./rank.js";
+import { domainOf, postRank } from "./rank.js";
 import { SessionMemory } from "./session.js";
 import { formatTrace, type Trace } from "./trace.js";
 import { Telemetry } from "./telemetry.js";
@@ -27,6 +28,8 @@ export interface ServerDeps {
   tier: "free" | "keyed";
   telemetry: Telemetry;
   session: SessionMemory;
+  /** Per-project retrieval memory (Tier 1, local). Constructed disabled when config.memory is off. */
+  memory: ProjectMemory;
   now?: () => Date;
 }
 
@@ -55,9 +58,23 @@ function readHarnessContext(config: Config): HarnessContext | null {
   if (!resolved) return null;
   const raw = readContextSource(resolved);
   if (raw === null) return null;
-  const ctx = parseHarnessContext(raw, resolved.paths[0]!);
+  const ctx = parseHarnessContext(raw, resolved.paths[0]!, {
+    headFallback: config.contextHeadFallback,
+  });
   ctx.source = resolved.sourceId;
   return ctx;
+}
+
+/**
+ * Tier 2 error events carry a status line, never upstream response bodies.
+ * The clients put bodies on line 2+ (youcom.ts/hostedClient.ts); the status
+ * match is a second fence in case an unknown error shape sneaks body content
+ * onto line 1.
+ */
+function sanitizeError(message: string): string {
+  const firstLine = message.split("\n")[0]!;
+  const status = /^(You\.com .*?error(?: \d{3})?(?: \(rate limited\))?)/.exec(firstLine);
+  return (status ? status[1]! : firstLine).slice(0, 200);
 }
 
 /**
@@ -98,6 +115,29 @@ function telemetrySafeParams(
   };
 }
 
+/**
+ * Remove vocabulary-injected terms from a compiled query, exactly reversing
+ * compile.ts's two insertion shapes: an unquoted stack term prepended to the
+ * front, and quoted terms appended as ` "term"`.
+ */
+function stripInjectedTerms(query: string, injected: string[]): string {
+  let safe = query;
+  for (const term of injected) {
+    if (safe.startsWith(`${term} `)) safe = safe.slice(term.length + 1);
+    else safe = safe.replace(` "${term}"`, "");
+  }
+  return safe;
+}
+
+/** Suggestions block appended after the trace so text-only clients see it too. */
+function formatSuggestions(suggestions: ContextSuggestion[]): string {
+  if (suggestions.length === 0) return "";
+  return (
+    "\n\ncontext_suggestions:\n" +
+    suggestions.map((s) => `  - add "${s.line}" to ${s.section} (${s.evidence})`).join("\n")
+  );
+}
+
 function formatResults(hits: SearchHit[]): string {
   if (hits.length === 0) return "No results.";
   return hits
@@ -114,19 +154,66 @@ export function buildServer(deps: ServerDeps): McpServer {
     { instructions: SERVER_INSTRUCTIONS },
   );
 
+  // Queries already bounced as multi-hop this session (see the search handler).
+  const bouncedQueries = new Set<string>();
+
+  /**
+   * Reconcile per-project memory against the freshly-read context file:
+   * record acceptances (a suggested domain now in the file), emit the
+   * suggestion telemetry, and return what's worth proposing to the agent now.
+   */
+  const reconcileMemory = (fileCtx: HarnessContext | null): ContextSuggestion[] => {
+    const { suggestions, accepted } = deps.memory.reconcileAndSuggest(
+      fileCtx?.trustedSources ?? [],
+      fileCtx?.blockedSources ?? [],
+    );
+    const meta = {
+      session_id: session.sessionId,
+      seq: session.calls,
+      ts: now().toISOString(),
+      harness: config.harness,
+      tier: deps.tier,
+    };
+    for (const domain of accepted) {
+      telemetry.record({
+        type: "suggestion_accepted",
+        ...meta,
+        suggestion_domain: domain,
+        suggestion_action: "add_trusted_source",
+      });
+    }
+    for (const s of suggestions) {
+      telemetry.record({
+        type: "suggestion_emitted",
+        ...meta,
+        suggestion_domain: s.domain,
+        suggestion_action: s.action,
+        suggestion_cited_count: s.cited,
+        suggestion_session_count: s.sessions,
+      });
+    }
+    return suggestions;
+  };
+
   server.registerTool(
     "search",
     {
       title: "You.com context-aware search",
       description: searchDescription(deps.tier),
       inputSchema: {
-        query: z.string().min(1).describe("The search query — natural language or lexical/operator syntax."),
+        query: z
+          .string()
+          .min(1)
+          .max(4000)
+          .describe("The search query — natural language or lexical/operator syntax."),
         trusted_sources: z
-          .array(z.string())
+          .array(z.string().max(253))
+          .max(50)
           .optional()
           .describe("Domains to boost in ranking (e.g. react.dev). Merged with the project's context-file list."),
         blocked_sources: z
-          .array(z.string())
+          .array(z.string().max(253))
+          .max(50)
           .optional()
           .describe("Domains to demote or filter (e.g. w3schools.com). Merged with the project's context-file list."),
         project_context: z
@@ -148,8 +235,13 @@ export function buildServer(deps: ServerDeps): McpServer {
 
       // Multi-hop intents go back to the calling model — the harness's
       // frontier model is the rewriter (§8.2); the MCP never runs its own.
+      // Bounce each query text at most once per session: a model that
+      // retries the same compound query gets results, not a refusal loop.
       const hop = detectMultiHop(queryReceived);
-      if (hop.multiHop) {
+      const bounceKey = queryReceived.trim().toLowerCase();
+      if (hop.multiHop && !bouncedQueries.has(bounceKey)) {
+        if (bouncedQueries.size >= 200) bouncedQueries.clear();
+        bouncedQueries.add(bounceKey);
         const request = decompositionRequest(hop.reason!);
         telemetry.record({
           type: "decomposition_request",
@@ -170,6 +262,7 @@ export function buildServer(deps: ServerDeps): McpServer {
           "",
           { trustedBoost: [], blockedApplied: [], decisionsApplied: [] },
           {},
+          [],
           [],
           [],
           deps.tier,
@@ -198,6 +291,12 @@ export function buildServer(deps: ServerDeps): McpServer {
       };
       const prov = populateParams(fileCtx, modelParams);
 
+      // Per-project memory: the soft-boost tier (never compiled into the query).
+      const memoryPreferred = deps.memory.boostDomains([
+        ...(prov.final.trusted_sources ?? []),
+        ...(prov.final.blocked_sources ?? []),
+      ]);
+
       const compiled = compileQuery(queryReceived, prov.final, fileCtx?.decisions ?? [], {
         mode: config.compileMode,
         now: now(),
@@ -207,14 +306,24 @@ export function buildServer(deps: ServerDeps): McpServer {
         nativeFreshness: deps.tier === "free",
       });
 
+      const safeParams = telemetrySafeParams(prov, fileCtx);
+      // File-head context (opt-in fallback) is Tier 1 — and vocabulary
+      // injection copies its tokens into the compiled query. Telemetry gets
+      // the ACTUAL sent query with those injected terms stripped out (a
+      // recompile could gate decisions differently and mis-report what ran).
+      const safeQueryCompiled =
+        safeParams.project_context_source === "file-head"
+          ? stripInjectedTerms(compiled.query, compiled.vocabularyInjected)
+          : compiled.query;
+
       const baseEvent = {
         session_id: session.sessionId,
         seq: session.calls,
         ts: now().toISOString(),
         harness: config.harness,
         query_received: queryReceived,
-        query_compiled: compiled.query,
-        ...telemetrySafeParams(prov, fileCtx),
+        query_compiled: safeQueryCompiled,
+        ...safeParams,
         compile_mode: config.compileMode,
         tier: deps.tier,
         context_file_read: fileCtx !== null,
@@ -234,39 +343,143 @@ export function buildServer(deps: ServerDeps): McpServer {
         });
       } catch (err) {
         const message = (err as Error).message;
-        telemetry.record({ type: "error", ...baseEvent, error: message.slice(0, 500) });
+        telemetry.record({ type: "error", ...baseEvent, error: sanitizeError(message) });
         return {
           isError: true,
           content: [
             {
               type: "text",
-              text: `Search failed: ${message}\n\n${formatTrace(traceFor(queryReceived, compiled.query, compiled, prov.final, [], [], deps.tier))}`,
+              text: `Search failed: ${message}\n\n${formatTrace(traceFor(queryReceived, compiled.query, compiled, prov.final, [], [], [], deps.tier))}`,
             },
           ],
         };
       }
 
-      const ranked = postRank(hits, prov.final.trusted_sources ?? [], prov.final.blocked_sources ?? []);
-      const trace = traceFor(queryReceived, compiled.query, compiled, prov.final, ranked.preRankTop3, ranked.postRankTop3, deps.tier);
+      const ranked = postRank(
+        hits,
+        prov.final.trusted_sources ?? [],
+        prov.final.blocked_sources ?? [],
+        memoryPreferred,
+      );
+      const trace = traceFor(
+        queryReceived,
+        compiled.query,
+        compiled,
+        prov.final,
+        ranked.preRankTop3,
+        ranked.postRankTop3,
+        ranked.memoryBoosted,
+        deps.tier,
+      );
+
+      const shownUrls = ranked.hits.map((h) => h.url);
+      session.recordShown(shownUrls);
+      deps.memory.recordShown(
+        shownUrls.map((u) => domainOf(u)).filter((d): d is string => d !== null),
+        session.sessionId,
+      );
+
+      // Reconcile/emit suggestions only after a successful search — a
+      // suggestion consumed by a failed call would vanish for RESUGGEST_DELTA
+      // more citations without ever being seen.
+      const contextSuggestions = reconcileMemory(fileCtx);
 
       telemetry.record({
         type: "search",
         ...baseEvent,
-        result_urls: ranked.hits.map((h) => h.url),
+        result_urls: shownUrls,
+        memory_boost: ranked.memoryBoosted,
       });
 
+      // The nudge is what makes the memory loop actually close: models don't
+      // spontaneously call bookkeeping tools, so every result set carries the ask.
+      const nudge = config.memory
+        ? "\n\n(after using these results, call report_outcome with the URLs you cited)"
+        : "";
       return {
         content: [
-          { type: "text", text: `${formatResults(ranked.hits)}\n\n${formatTrace(trace)}` },
+          {
+            type: "text",
+            text: `${formatResults(ranked.hits)}\n\n${formatTrace(trace)}${formatSuggestions(contextSuggestions)}${nudge}`,
+          },
         ],
         structuredContent: {
           kind: "results",
           results: ranked.hits,
           trace,
+          ...(contextSuggestions.length > 0 ? { context_suggestions: contextSuggestions } : {}),
         },
       };
     },
   );
+
+  if (config.memory) {
+    server.registerTool(
+      "report_outcome",
+      {
+        title: "Report which search results you used",
+        description:
+          "Tell you-aware which result URLs from this session you actually cited or used. " +
+          "Feeds the project's local retrieval memory (the store stays on this machine; cited domains " +
+          "also appear in Tier 2 telemetry — opt out with YOU_AWARE_TELEMETRY=off): domains that keep " +
+          "proving useful get a soft rank boost on future searches and, with enough evidence, a suggested " +
+          "`## Trusted Sources` addition to your context file. Call once per task, after using results.",
+        inputSchema: {
+          cited_urls: z
+            .array(z.string().min(1))
+            .min(1)
+            .max(50)
+            .describe("Result URLs (exactly as returned by search this session) that you cited or used."),
+          rejected_suggestions: z
+            .array(z.string().max(253))
+            .max(50)
+            .optional()
+            .describe("Domains from earlier context_suggestions the developer declined — never suggested again."),
+        },
+      },
+      async (args): Promise<CallToolResult> => {
+        // Only URLs actually shown this session count — a misremembered URL
+        // must not pump arbitrary domains into the project's memory.
+        const cited = args.cited_urls.filter((u) => session.wasShown(u));
+        const ignored = args.cited_urls.filter((u) => !session.wasShown(u));
+        const domains = [...new Set(cited.map((u) => domainOf(u)).filter((d): d is string => d !== null))];
+        deps.memory.recordCited(domains, session.sessionId);
+
+        const dismissed = (args.rejected_suggestions ?? [])
+          .map((d) => normalizeDomain(d))
+          .filter((d): d is string => d !== null);
+        if (dismissed.length > 0) deps.memory.dismiss(dismissed);
+
+        telemetry.record({
+          type: "outcome",
+          session_id: session.sessionId,
+          seq: session.calls,
+          ts: now().toISOString(),
+          harness: config.harness,
+          tier: deps.tier,
+          cited_domains: domains,
+          cited_count: cited.length,
+          ignored_count: ignored.length,
+        });
+
+        const suggestions = reconcileMemory(readHarnessContext(config));
+        const ack =
+          `recorded ${domains.length} domain${domains.length === 1 ? "" : "s"} from ` +
+          `${cited.length} cited URL${cited.length === 1 ? "" : "s"}` +
+          (ignored.length > 0 ? ` (${ignored.length} ignored — not shown this session)` : "") +
+          ".";
+        return {
+          content: [{ type: "text", text: ack + formatSuggestions(suggestions) }],
+          structuredContent: {
+            kind: "outcome_ack",
+            recorded_domains: domains,
+            ignored_urls: ignored,
+            ...(suggestions.length > 0 ? { context_suggestions: suggestions } : {}),
+          },
+        };
+      },
+    );
+  }
 
   return server;
 }
@@ -278,6 +491,7 @@ function traceFor(
   final: SearchParams,
   pre3: string[],
   post3: string[],
+  memoryBoost: string[],
   tier: "free" | "keyed",
 ): Trace {
   return {
@@ -285,6 +499,7 @@ function traceFor(
     query_compiled: compiledQuery,
     trusted_sources_boost: compiled.trustedBoost,
     blocked_sources_applied: compiled.blockedApplied,
+    memory_boost: memoryBoost,
     decisions_applied: compiled.decisionsApplied,
     project_context_chars: final.project_context?.length ?? 0,
     freshness: final.freshness ?? "default",
