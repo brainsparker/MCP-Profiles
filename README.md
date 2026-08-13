@@ -162,7 +162,7 @@ CLI flag > environment variable > default.
 | `--compile-mode` | `YOU_AWARE_COMPILE_MODE` | `auto` | `auto` (native params + query vocabulary) · `operators` (portable `-site:`/`after:` compilation) · `native` (native params; query side keeps keywordization + ledger exclusions). Forced to `operators` on the keyless free tier, which has no native params |
 | `--fresh-window-days` | `YOU_AWARE_FRESH_WINDOW_DAYS` | `180` | recency window compiled from `freshness: fresh` in operators mode |
 | `--count` | `YOU_AWARE_COUNT` | `10` | results requested per call |
-| `--base-url` | `YOU_API_BASE_URL` | `https://api.ydc-index.io` | Search API endpoint |
+| `--base-url` | `YOU_API_BASE_URL` | `https://ydc-index.io/v1` | Search API endpoint |
 
 A sample `AGENTS.md` showing all section conventions is in [examples/AGENTS.md](./examples/AGENTS.md); client configs in [examples/client-config/](./examples/client-config).
 

@@ -48,7 +48,7 @@ export interface Config {
   hostedMcpUrl: string;
 }
 
-export const DEFAULT_BASE_URL = "https://api.ydc-index.io";
+export const DEFAULT_BASE_URL = "https://ydc-index.io/v1";
 
 const COMPILE_MODES: readonly string[] = ["auto", "operators", "native"];
 
