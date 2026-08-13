@@ -1,7 +1,16 @@
 name: Release
 
-# Tag-triggered npm publish with provenance. Requirements before tagging:
-#  - NPM_TOKEN repository secret (npm automation token with publish rights)
+# Tag-triggered npm publish via Trusted Publishing (OIDC) — no tokens.
+# Typical release: npm version patch && git push && git push --tags
+#
+# Requirements:
+#  - One-time npmjs.com setup: package settings > Trusted Publisher >
+#    GitHub Actions with user brainsparker, repo MCP-Profiles, workflow
+#    filename release.yml (exact, case-sensitive), allowed action "npm publish"
+#  - npm CLI >= 11.5.1 on the runner (Node 24 ships it; pinned below anyway)
+#  - GitHub-hosted runner and id-token: write (both required for OIDC)
+#  - NO NODE_AUTH_TOKEN anywhere in the job: npm only falls back to OIDC
+#    when it finds no token
 #  - package.json "repository.url" must match this GitHub repository, or
 #    `npm publish --provenance` refuses to publish
 #  - the tag must be v<package.json version> (guarded below)
@@ -13,18 +22,19 @@ on:
 
 permissions:
   contents: read
-  id-token: write # npm provenance
+  id-token: write # OIDC exchange with npm + provenance
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest # must be GitHub-hosted for trusted publishing
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "22.x"
-          cache: npm
+          node-version: "24" # Node 22 ships npm 10, too old for OIDC (needs npm >= 11.5.1)
           registry-url: "https://registry.npmjs.org"
+      # Pin latest npm so the OIDC version gate can never silently regress
+      - run: npm install -g npm@latest
       - run: npm ci
       - name: Verify tag matches package.json version
         run: |
@@ -36,6 +46,5 @@ jobs:
               process.exit(1);
             }
           "
+      # No token env — that absence is what makes npm authenticate via OIDC
       - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
