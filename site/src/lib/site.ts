@@ -6,13 +6,13 @@ export const SITE = {
   description:
     "Context-aware web search for AI agents. you-aware reads your project's AGENTS.md and compiles it into every search — trusted sources, past decisions, your actual stack.",
   github: "https://github.com/brainsparker/MCP-Profiles",
-  npm: "https://www.npmjs.com/package/@youdotcom-oss/you-aware",
+  npm: "https://www.npmjs.com/package/@brainsparker/you-aware",
   quickstart: "https://github.com/brainsparker/MCP-Profiles#install",
   dataHandling: "https://github.com/brainsparker/MCP-Profiles/blob/main/docs/data-handling.md",
   conventions: "https://github.com/brainsparker/MCP-Profiles/blob/main/docs/context-conventions.md",
 } as const;
 
-export const INSTALL_COMMAND = "npx -y @youdotcom-oss/you-aware";
+export const INSTALL_COMMAND = "npx -y @brainsparker/you-aware";
 
 /** The context file the server reads — the hero's left-hand exhibit. */
 export const AGENTS_MD_SNIPPET = `## Project Context

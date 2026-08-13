@@ -3,7 +3,7 @@
   "mcpServers": {
     "you-aware": {
       "command": "npx",
-      "args": ["-y", "@youdotcom-oss/you-aware"],
+      "args": ["-y", "@brainsparker/you-aware"],
       "env": {
         "YOU_AWARE_HARNESS": "windsurf",
         "YDC_API_KEY": "your-you.com-search-api-key (optional — remove for the free tier)"

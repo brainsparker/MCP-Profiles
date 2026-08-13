@@ -3,7 +3,7 @@
   "mcp": {
     "you-aware": {
       "type": "local",
-      "command": ["npx", "-y", "@youdotcom-oss/you-aware"],
+      "command": ["npx", "-y", "@brainsparker/you-aware"],
       "enabled": true,
       "timeout": 60000,
       "environment": {

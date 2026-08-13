@@ -3,7 +3,7 @@
   "mcpServers": {
     "you-aware": {
       "command": "npx",
-      "args": ["-y", "@youdotcom-oss/you-aware"],
+      "args": ["-y", "@brainsparker/you-aware"],
       "timeout": 60000,
       "env": {
         "YOU_AWARE_HARNESS": "gemini-cli",

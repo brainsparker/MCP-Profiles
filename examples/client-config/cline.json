@@ -3,7 +3,7 @@
   "mcpServers": {
     "you-aware": {
       "command": "npx",
-      "args": ["-y", "@youdotcom-oss/you-aware"],
+      "args": ["-y", "@brainsparker/you-aware"],
       "disabled": false,
       "env": {
         "YOU_AWARE_HARNESS": "cline",

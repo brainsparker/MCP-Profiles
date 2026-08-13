@@ -26,7 +26,7 @@ The server is a single `npx`-runnable stdio binary — add it to any MCP client.
   "mcp": {
     "you-aware": {
       "type": "local",
-      "command": ["npx", "-y", "@youdotcom-oss/you-aware"],
+      "command": ["npx", "-y", "@brainsparker/you-aware"],
       "enabled": true,
       "timeout": 60000,
       "environment": { "YOU_AWARE_HARNESS": "opencode" }
@@ -38,7 +38,7 @@ The server is a single `npx`-runnable stdio binary — add it to any MCP client.
 In Claude Code:
 
 ```bash
-claude mcp add you-aware -- npx -y @youdotcom-oss/you-aware
+claude mcp add you-aware -- npx -y @brainsparker/you-aware
 ```
 
 The same `npx` command works in any MCP client. Full config examples (including the keyed variants) are in [examples/client-config/](./examples/client-config):
@@ -46,7 +46,7 @@ The same `npx` command works in any MCP client. Full config examples (including 
 | Client | Config file | Example | Context file read |
 |---|---|---|---|
 | OpenCode | `opencode.json` | [opencode.json](./examples/client-config/opencode.json) | `AGENTS.md` |
-| Claude Code | `claude mcp add you-aware -- npx -y @youdotcom-oss/you-aware` | — | `AGENTS.md` / `CLAUDE.md` |
+| Claude Code | `claude mcp add you-aware -- npx -y @brainsparker/you-aware` | — | `AGENTS.md` / `CLAUDE.md` |
 | Claude Desktop | `claude_desktop_config.json` | [claude-desktop.json](./examples/client-config/claude-desktop.json) | `AGENTS.md` / `CLAUDE.md` |
 | Codex CLI | `~/.codex/config.toml` | [codex-cli.toml](./examples/client-config/codex-cli.toml) | `AGENTS.md` |
 | Cursor | `.cursor/mcp.json` | [cursor.json](./examples/client-config/cursor.json) | `.cursor/rules/*.mdc`, `.cursorrules` |
@@ -65,14 +65,14 @@ One config block (or one command). No account creation. No memory setup. First r
 
 (An `{env:…}` reference that's unset in your shell substitutes to an empty string — the server treats it as absent and stays on the free tier. Clients that use the `mcpServers` config shape call this block `"env"` and don't substitute `{env:…}` — put the key itself there. The generous `timeout` covers `npx`'s first-run package download.)
 
-**Data handling, plainly:** the search call itself carries your query and populated parameters to You.com — that's the product. Everything else stays local: raw context/rules files, conversation history, file paths, and the per-project memory never leave your machine, and file content becomes search context only when you author an explicit `## Project Context` section. Telemetry (queries, parameters, result URLs, outcome signals) is on by default but **ships nowhere out of the box** — it spools to a capped, owner-readable local file, and is only transmitted if you explicitly configure `YOU_AWARE_TELEMETRY_URL`. Turn it off entirely with `YOU_AWARE_TELEMETRY=off`. Full details, including exactly which three source files can emit bytes, in [docs/data-handling.md](./docs/data-handling.md). If you want a fixed dependency, pin the version: `npx -y @youdotcom-oss/you-aware@0.1`.
+**Data handling, plainly:** the search call itself carries your query and populated parameters to You.com — that's the product. Everything else stays local: raw context/rules files, conversation history, file paths, and the per-project memory never leave your machine, and file content becomes search context only when you author an explicit `## Project Context` section. Telemetry (queries, parameters, result URLs, outcome signals) is on by default but **ships nowhere out of the box** — it spools to a capped, owner-readable local file, and is only transmitted if you explicitly configure `YOU_AWARE_TELEMETRY_URL`. Turn it off entirely with `YOU_AWARE_TELEMETRY=off`. Full details, including exactly which three source files can emit bytes, in [docs/data-handling.md](./docs/data-handling.md). If you want a fixed dependency, pin the version: `npx -y @brainsparker/you-aware@0.1`.
 
 ### Companion skill
 
 [`skills/you-aware/`](./skills/you-aware) is an [Agent Skill](https://agentskills.io) that teaches an agent both halves of the loop — when and how to call `search`, and how to keep the `AGENTS.md` sections current. Install it by copying the folder into your client's skills directory — project-level `.opencode/skills/`, `.claude/skills/`, or `.agents/skills/`, or their global equivalents (`~/.config/opencode/skills/`, `~/.claude/skills/`, `~/.agents/skills/`):
 
 ```bash
-cp -r node_modules/@youdotcom-oss/you-aware/skills/you-aware .opencode/skills/
+cp -r node_modules/@brainsparker/you-aware/skills/you-aware .opencode/skills/
 ```
 
 (or copy it straight from this repo). The skill body loads only when relevant — its at-rest cost is one description line.
@@ -192,7 +192,7 @@ npm run inspect     # MCP Inspector against the built server
 
 ## Who's behind this
 
-Built by [Brian Sparker](https://github.com/brainsparker) at [You.com](https://you.com) and published under the `@youdotcom-oss` npm org, MIT-licensed. The interesting parts — context parsing, query compilation, the memory loop — are a thin deterministic layer you can read in an afternoon; the search itself runs on the You.com Search API (`SearchClient` in [`src/youcom.ts`](./src/youcom.ts) is the seam if you want to point the compiler somewhere else).
+Built by [Brian Sparker](https://github.com/brainsparker) at [You.com](https://you.com) and published under his own `@brainsparker` npm scope, MIT-licensed. The interesting parts — context parsing, query compilation, the memory loop — are a thin deterministic layer you can read in an afternoon; the search itself runs on the You.com Search API (`SearchClient` in [`src/youcom.ts`](./src/youcom.ts) is the seam if you want to point the compiler somewhere else).
 
 **Later:** Cursor-rules / Cline-memory adapters and hosted variant (v2 GA) · `prior_decisions` native parameter, `workflow_stage`, smart context-file slicing, session anti-loop mechanic GA (v2.1) · multiple retrieval profiles, budget parameters, enterprise source policy (v2.2+).
 
