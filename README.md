@@ -2,7 +2,7 @@
 
 **Context-aware web search for AI agents — search that already knows what you're working on.**
 
-`you-aware` is an opinionated, installable [MCP](https://modelcontextprotocol.io) server that makes web search context-aware when the caller is an AI agent. It reads the context the developer has already written — the project's `AGENTS.md` (or `CLAUDE.md`, or Cursor/Cline/Windsurf rules) — and compiles it into the lexical, operator-heavy query language production agents actually speak, delivered through the You.com Search API. Every response carries a trace of exactly what ran, and an ablation [eval harness](./eval) ships in the repo so the claim is testable, not vibes: `npm run eval` compares plain passthrough against compiled queries on your own goldset.
+`you-aware` is an opinionated, installable [MCP](https://modelcontextprotocol.io) server that makes web search context-aware when the caller is an AI agent. It reads the context the developer has already written — the project's `AGENTS.md` (or `CLAUDE.md` and `.claude/rules/`, or Copilot/Cursor/Cline/Windsurf/Kiro rules) — and compiles it into the lexical, operator-heavy query language production agents actually speak, delivered through the You.com Search API. Every response carries a trace of exactly what ran, and an ablation [eval harness](./eval) ships in the repo so the claim is testable, not vibes: `npm run eval` compares plain passthrough against compiled queries on your own goldset.
 
 Your agent's harness already knows your trusted sources, your prior decisions, and your stack. The search API call should reflect all of it. With `you-aware`, it does — without configuring a second memory system.
 
@@ -46,14 +46,15 @@ The same `npx` command works in any MCP client. Full config examples (including 
 | Client | Config file | Example | Context file read |
 |---|---|---|---|
 | OpenCode | `opencode.json` | [opencode.json](./examples/client-config/opencode.json) | `AGENTS.md` |
-| Claude Code | `claude mcp add you-aware -- npx -y @brainsparker/you-aware` | — | `AGENTS.md` / `CLAUDE.md` |
-| Claude Desktop | `claude_desktop_config.json` | [claude-desktop.json](./examples/client-config/claude-desktop.json) | `AGENTS.md` / `CLAUDE.md` |
-| Codex CLI | `~/.codex/config.toml` | [codex-cli.toml](./examples/client-config/codex-cli.toml) | `AGENTS.md` |
+| Claude Code | `claude mcp add you-aware -- npx -y @brainsparker/you-aware` | — | `AGENTS.md` / `CLAUDE.md` + `CLAUDE.local.md` + `.claude/rules/` |
+| Claude Desktop | `claude_desktop_config.json` | [claude-desktop.json](./examples/client-config/claude-desktop.json) | `AGENTS.md` / `CLAUDE.md` + `.claude/rules/` |
+| Codex CLI | `~/.codex/config.toml` | [codex-cli.toml](./examples/client-config/codex-cli.toml) | `AGENTS.override.md` / `AGENTS.md` |
 | Cursor | `.cursor/mcp.json` | [cursor.json](./examples/client-config/cursor.json) | `.cursor/rules/*.mdc`, `.cursorrules` |
 | Gemini CLI | `.gemini/settings.json` | [gemini-cli.json](./examples/client-config/gemini-cli.json) | `GEMINI.md` |
 | Cline | `cline_mcp_settings.json` | [cline.json](./examples/client-config/cline.json) | `.clinerules` |
-| Windsurf | `~/.codeium/windsurf/mcp_config.json` | [windsurf.json](./examples/client-config/windsurf.json) | `.windsurfrules` |
-| VS Code / Copilot & anything else | varies | [generic-mcpservers.json](./examples/client-config/generic-mcpservers.json) | `.github/copilot-instructions.md`, `AGENTS.md` |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` | [windsurf.json](./examples/client-config/windsurf.json) | `.windsurf/rules/`, `.windsurfrules` |
+| Kiro | `.kiro/settings/mcp.json` | [kiro.json](./examples/client-config/kiro.json) | `AGENTS.md`, `.kiro/steering/` |
+| VS Code / Copilot & anything else | varies | [generic-mcpservers.json](./examples/client-config/generic-mcpservers.json) | `.github/copilot-instructions.md` + `.github/instructions/`, `AGENTS.md` |
 
 "Context file read" is what the server falls back to for that client's native convention — `AGENTS.md` (then `CLAUDE.md`) always wins when present, so one `AGENTS.md` serves every client identically. Full discovery order in [docs/context-conventions.md](./docs/context-conventions.md).
 
@@ -92,7 +93,7 @@ All parameters are optional. With everything omitted you get exactly today's Sea
 
 ### Parameter population: deterministic file-read + model merge
 
-1. At call time, the server reads your project's context file — `AGENTS.md` first, then `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, and Cursor/Cline/Windsurf rules files — walking up from the project root (the nearest directory wins; within a directory, `AGENTS.md` wins).
+1. At call time, the server reads your project's context files: `AGENTS.md` (or `AGENTS.override.md`) first, then `CLAUDE.md` with `CLAUDE.local.md` and `.claude/rules/`, `GEMINI.md`, `.github/copilot-instructions.md` with `.github/instructions/`, and Cursor/Cline/Windsurf/Kiro rules files, walking up from the project root (the nearest directory wins; within a directory, `AGENTS.md` wins). A convention spread across several files is read as one document in the harness's own load order.
 2. It parses [the section conventions this server defines](./docs/context-conventions.md) — `## Trusted Sources`, `## Blocked Sources`, `## Decisions`, `## Project Context`, `## Freshness` — into ground-truth parameter values, whatever file they live in. No structured config required, and no section is: a file with just `## Trusted Sources` already improves ranking. File content becomes free-text search context only from an explicit `## Project Context` section (an opt-in head fallback exists: `YOU_AWARE_CONTEXT_FALLBACK=head`).
 3. The calling model may *also* populate the same parameters from its working context.
 4. The final API call uses whichever source produces the higher-quality parameter, with the deterministic file-read as the safety net: source lists are unioned, and a model-supplied `project_context` (which can fold in conversation-level context the file can't see) overrides the file-derived one.

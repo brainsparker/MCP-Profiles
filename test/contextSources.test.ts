@@ -1,13 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, join, relative } from "node:path";
 import {
   MAX_CONTEXT_FILE_BYTES,
   findContextSource,
   readContextSource,
 } from "../src/context/read.js";
 import { parseHarnessContext } from "../src/context/parse.js";
+import { MAX_RULES_FILES, readFrontmatterField, walkRulesDir } from "../src/context/sources.js";
 
 let root: string;
 beforeEach(() => {
@@ -87,6 +88,142 @@ describe("findContextSource", () => {
     mkdirSync(deep, { recursive: true });
     expect(findContextSource(deep)).toBeNull();
   });
+
+  it("lets AGENTS.override.md replace AGENTS.md in the same directory (Codex reads one, not both)", () => {
+    writeFileSync(join(root, "AGENTS.md"), "# shared");
+    writeFileSync(join(root, "AGENTS.override.md"), "# local override");
+    const resolved = findContextSource(root)!;
+    expect(resolved.sourceId).toBe("agents-md");
+    expect(resolved.paths).toEqual([join(root, "AGENTS.override.md")]);
+  });
+
+  it("loads CLAUDE.md, then CLAUDE.local.md, then .claude/rules/**/*.md in Claude Code's order", () => {
+    writeFileSync(join(root, "CLAUDE.md"), "# claude");
+    writeFileSync(join(root, "CLAUDE.local.md"), "# local");
+    const rules = join(root, ".claude", "rules");
+    mkdirSync(join(rules, "backend"), { recursive: true });
+    writeFileSync(join(rules, "zz-style.md"), "style");
+    writeFileSync(join(rules, "aa-core.md"), "core");
+    writeFileSync(join(rules, "backend", "api.md"), "api");
+    writeFileSync(join(rules, "notes.txt"), "ignored");
+    const resolved = findContextSource(root)!;
+    expect(resolved.sourceId).toBe("claude-md");
+    expect(resolved.paths.map((p) => relative(root, p))).toEqual([
+      "CLAUDE.md",
+      "CLAUDE.local.md",
+      join(".claude", "rules", "aa-core.md"),
+      join(".claude", "rules", "zz-style.md"),
+      join(".claude", "rules", "backend", "api.md"),
+    ]);
+  });
+
+  it("falls back to .claude/CLAUDE.md and treats a rules-only .claude/ as a hit", () => {
+    mkdirSync(join(root, ".claude", "rules"), { recursive: true });
+    writeFileSync(join(root, ".claude", "rules", "sources.md"), "## Trusted Sources\n- react.dev\n");
+    let resolved = findContextSource(root)!;
+    expect(resolved.sourceId).toBe("claude-md");
+    expect(resolved.paths.map((p) => relative(root, p))).toEqual([join(".claude", "rules", "sources.md")]);
+
+    writeFileSync(join(root, ".claude", "CLAUDE.md"), "# nested claude");
+    resolved = findContextSource(root)!;
+    expect(resolved.paths.map((p) => relative(root, p))).toEqual([
+      join(".claude", "CLAUDE.md"),
+      join(".claude", "rules", "sources.md"),
+    ]);
+  });
+
+  it("combines Copilot's repo-wide file with .github/instructions/**/*.instructions.md", () => {
+    mkdirSync(join(root, ".github", "instructions", "api"), { recursive: true });
+    writeFileSync(join(root, ".github", "copilot-instructions.md"), "# repo-wide");
+    writeFileSync(join(root, ".github", "instructions", "react.instructions.md"), "react");
+    writeFileSync(join(root, ".github", "instructions", "api", "rest.instructions.md"), "rest");
+    writeFileSync(join(root, ".github", "instructions", "README.md"), "not an instructions file");
+    const resolved = findContextSource(root)!;
+    expect(resolved.sourceId).toBe("copilot");
+    expect(resolved.paths.map((p) => relative(root, p))).toEqual([
+      join(".github", "copilot-instructions.md"),
+      join(".github", "instructions", "react.instructions.md"),
+      join(".github", "instructions", "api", "rest.instructions.md"),
+    ]);
+  });
+
+  it("finds .github/instructions/ even without a copilot-instructions.md", () => {
+    mkdirSync(join(root, ".github", "instructions"), { recursive: true });
+    writeFileSync(join(root, ".github", "instructions", "ts.instructions.md"), "ts");
+    expect(findContextSource(root)!.sourceId).toBe("copilot");
+  });
+
+  it("merges .windsurf/rules/*.md with legacy .windsurfrules appended, skipping manual-trigger rules", () => {
+    mkdirSync(join(root, ".windsurf", "rules"), { recursive: true });
+    writeFileSync(join(root, ".windsurf", "rules", "b-always.md"), "---\ntrigger: always_on\n---\nalways");
+    writeFileSync(join(root, ".windsurf", "rules", "a-glob.md"), "---\ntrigger: glob\nglobs: '**/*.ts'\n---\nglob");
+    writeFileSync(join(root, ".windsurf", "rules", "c-manual.md"), "---\ntrigger: manual\n---\nmanual only");
+    writeFileSync(join(root, ".windsurfrules"), "legacy");
+    const resolved = findContextSource(root)!;
+    expect(resolved.sourceId).toBe("windsurf");
+    expect(resolved.paths.map((p) => basename(p))).toEqual(["a-glob.md", "b-always.md", ".windsurfrules"]);
+  });
+
+  it("reads Kiro steering files, skipping inclusion: manual, after every other convention", () => {
+    mkdirSync(join(root, ".kiro", "steering"), { recursive: true });
+    writeFileSync(join(root, ".kiro", "steering", "product.md"), "product");
+    writeFileSync(
+      join(root, ".kiro", "steering", "tf.md"),
+      '---\ninclusion: fileMatch\nfileMatchPattern: "*.tf"\n---\nterraform',
+    );
+    writeFileSync(join(root, ".kiro", "steering", "manual.md"), "---\ninclusion: manual\n---\nmanual");
+    let resolved = findContextSource(root)!;
+    expect(resolved.sourceId).toBe("kiro");
+    expect(resolved.paths.map((p) => basename(p))).toEqual(["product.md", "tf.md"]);
+
+    writeFileSync(join(root, ".windsurfrules"), "windsurf");
+    resolved = findContextSource(root)!;
+    expect(resolved.sourceId).toBe("windsurf");
+  });
+});
+
+describe("walkRulesDir", () => {
+  it("orders files before subdirectories, bounds depth, and caps the file count", () => {
+    const rules = join(root, "rules");
+    mkdirSync(join(rules, "a", "b", "c", "d"), { recursive: true });
+    writeFileSync(join(rules, "z.md"), "z");
+    writeFileSync(join(rules, "a", "x.md"), "x");
+    writeFileSync(join(rules, "a", "b", "y.md"), "y");
+    writeFileSync(join(rules, "a", "b", "c", "deep.md"), "deep");
+    writeFileSync(join(rules, "a", "b", "c", "d", "too-deep.md"), "too deep");
+    expect(walkRulesDir(rules, ".md").map((p) => relative(rules, p))).toEqual([
+      "z.md",
+      join("a", "x.md"),
+      join("a", "b", "y.md"),
+      join("a", "b", "c", "deep.md"),
+    ]);
+
+    const many = join(root, "many");
+    mkdirSync(many);
+    for (let i = 0; i < MAX_RULES_FILES + 5; i++) {
+      writeFileSync(join(many, `${String(i).padStart(3, "0")}.md`), "r");
+    }
+    const spy = vi.spyOn(process.stderr, "write").mockImplementation((() => true) as typeof process.stderr.write);
+    const found = walkRulesDir(many, ".md");
+    spy.mockRestore();
+    expect(found).toHaveLength(MAX_RULES_FILES);
+    expect(walkRulesDir(join(root, "missing"), ".md")).toEqual([]);
+  });
+});
+
+describe("readFrontmatterField", () => {
+  it("reads a flat scalar field and ignores files without frontmatter", () => {
+    const withFm = join(root, "fm.md");
+    writeFileSync(withFm, '---\ndescription: "Style rules"\ntrigger: "model_decision"\npaths:\n  - "src/**"\n---\nbody');
+    expect(readFrontmatterField(withFm, "trigger")).toBe("model_decision");
+    expect(readFrontmatterField(withFm, "paths")).toBeNull();
+    expect(readFrontmatterField(withFm, "inclusion")).toBeNull();
+
+    const plain = join(root, "plain.md");
+    writeFileSync(plain, "---\nnot frontmatter, just a rule\n");
+    expect(readFrontmatterField(plain, "trigger")).toBeNull();
+    expect(readFrontmatterField(join(root, "missing.md"), "trigger")).toBeNull();
+  });
 });
 
 describe("readContextSource", () => {
@@ -114,6 +251,35 @@ describe("readContextSource", () => {
     expect(warning).toBeDefined();
     expect(warning).toContain("AGENTS.md");
     expect(warning).not.toContain(root);
+  });
+
+  it("strips frontmatter from rules-directory .md files and from a file ending at the closing fence", () => {
+    mkdirSync(join(root, ".claude", "rules"), { recursive: true });
+    writeFileSync(
+      join(root, ".claude", "rules", "api.md"),
+      '---\npaths:\n  - "src/api/**/*.ts"\n---\n## Trusted Sources\n- react.dev\n',
+    );
+    writeFileSync(join(root, ".claude", "rules", "empty.md"), "---\npaths: [\"**/*.md\"]\n---");
+    const resolved = findContextSource(root)!;
+    const raw = readContextSource(resolved)!;
+    expect(raw).toBe("## Trusted Sources\n- react.dev\n");
+    expect(raw).not.toContain("paths");
+    const ctx = parseHarnessContext(raw, resolved.paths[0]!);
+    expect(ctx.trustedSources).toEqual(["react.dev"]);
+  });
+
+  it("parses section conventions spread across Copilot instructions files", () => {
+    mkdirSync(join(root, ".github", "instructions"), { recursive: true });
+    writeFileSync(join(root, ".github", "copilot-instructions.md"), "## Trusted Sources\n- react.dev\n");
+    writeFileSync(
+      join(root, ".github", "instructions", "docs.instructions.md"),
+      '---\napplyTo: "docs/**/*.md"\n---\n## Blocked Sources\n- w3schools.com\n\n## Freshness\nfresh\n',
+    );
+    const resolved = findContextSource(root)!;
+    const ctx = parseHarnessContext(readContextSource(resolved)!, resolved.paths[0]!);
+    expect(ctx.trustedSources).toEqual(["react.dev"]);
+    expect(ctx.blockedSources).toEqual(["w3schools.com"]);
+    expect(ctx.freshness).toBe("fresh");
   });
 
   it("feeds section conventions in a .cursorrules through the normal parser", () => {

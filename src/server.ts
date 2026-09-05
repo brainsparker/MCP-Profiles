@@ -33,9 +33,10 @@ export interface ServerDeps {
   now?: () => Date;
 }
 
-const SERVER_INSTRUCTIONS = `you-aware makes web search context-aware: it reads the project's context file — \
-AGENTS.md first, then CLAUDE.md, GEMINI.md, .github/copilot-instructions.md, Cursor/Cline/Windsurf rules files — \
-(trusted/blocked sources, decisions ledger, project context) and compiles that context into the query \
+const SERVER_INSTRUCTIONS = `you-aware makes web search context-aware: it reads the project's context files \
+(AGENTS.md first, then CLAUDE.md and .claude/rules/, GEMINI.md, Copilot .github/instructions/, \
+Cursor/Cline/Windsurf/Kiro rules files) for trusted/blocked sources, a decisions ledger, and project \
+context, and compiles that context into the query \
 and retrieval parameters. Call \`search\` for technical research. You may also populate trusted_sources, \
 blocked_sources, project_context, and freshness yourself from your working context — the server merges \
 your values with its deterministic file-read (the file-read is the safety net; your values can add \
@@ -46,7 +47,8 @@ const searchDescription = (tier: "free" | "keyed"): string =>
   `Web search over ${
     tier === "keyed" ? "the You.com Search API" : "You.com (hosted free tier)"
   }, tuned to this project's context. \
-The server reads the project's context file (AGENTS.md, CLAUDE.md, GEMINI.md, Copilot/Cursor/Cline/Windsurf rules), \
+The server reads the project's context files (AGENTS.md, CLAUDE.md and .claude/rules/, GEMINI.md, \
+Copilot/Cursor/Cline/Windsurf/Kiro rules), \
 merges it with any parameters you supply, compiles the query \
 into lexical form (vocabulary injection, decision-ledger exclusions, source/freshness handling), and \
 returns ranked results with an inspectable trace of exactly what ran. Multi-intent queries return a \

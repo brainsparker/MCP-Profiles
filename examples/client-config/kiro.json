@@ -1,0 +1,15 @@
+{
+  "$comment": "Kiro: merge into .kiro/settings/mcp.json (workspace) or ~/.kiro/settings/mcp.json (user). Omit the env block for the keyless free tier. you-aware reads .kiro/steering/*.md when no AGENTS.md/CLAUDE.md exists (AGENTS.md at the workspace root is read first, as Kiro does).",
+  "mcpServers": {
+    "you-aware": {
+      "command": "npx",
+      "args": ["-y", "@brainsparker/you-aware"],
+      "env": {
+        "YOU_AWARE_HARNESS": "kiro",
+        "YDC_API_KEY": "your-you.com-search-api-key (optional, remove for the free tier)"
+      },
+      "disabled": false,
+      "autoApprove": ["search", "report_outcome"]
+    }
+  }
+}
