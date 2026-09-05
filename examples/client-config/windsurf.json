@@ -1,5 +1,5 @@
 {
-  "$comment": "Windsurf — merge into ~/.codeium/windsurf/mcp_config.json. Omit the env block for the keyless free tier. you-aware reads .windsurfrules when no AGENTS.md/CLAUDE.md exists.",
+  "$comment": "Windsurf — merge into ~/.codeium/windsurf/mcp_config.json. Omit the env block for the keyless free tier. you-aware reads .windsurf/rules/ and legacy .windsurfrules when no AGENTS.md/CLAUDE.md exists.",
   "mcpServers": {
     "you-aware": {
       "command": "npx",

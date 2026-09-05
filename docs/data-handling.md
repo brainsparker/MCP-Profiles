@@ -4,7 +4,7 @@
 
 ## Tier 1 — never leaves the machine
 
-- Raw context/rules-file contents (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.cursor/rules/*.mdc`, `.cursorrules`, `.clinerules`, `.windsurfrules`)
+- Raw context/rules-file contents (`AGENTS.md`, `AGENTS.override.md`, `CLAUDE.md`, `CLAUDE.local.md`, `.claude/rules/`, `GEMINI.md`, `.github/copilot-instructions.md`, `.github/instructions/`, `.cursor/rules/*.mdc`, `.cursorrules`, `.clinerules`, `.windsurf/rules/`, `.windsurfrules`, `.kiro/steering/`)
 - Conversation history
 - File paths
 - The per-project retrieval memory — domain citation stats stored under `<data dir>/projects/`, keyed by a local hash of the project path. The store, its path, and the hash never leave the machine (only cited **domains** appear in telemetry outcome events, the same class of data as the source parameters). Opt out entirely with `YOU_AWARE_MEMORY=off`; the store lives under `YOU_AWARE_DATA_DIR` (default: the telemetry dir, `~/.you-aware`) and works independently of the telemetry opt-out.

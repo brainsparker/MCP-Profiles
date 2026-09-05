@@ -32,16 +32,18 @@ export function findContextSource(start: string, maxDepth = 6): ResolvedContext 
  * Tier 1 boundary (§8.3): the raw file contents stay in-process. Only the
  * populated parameters derived from them may travel further.
  *
- * Multi-file sources (.cursor/rules/*.mdc) are concatenated in resolve order;
- * .mdc YAML frontmatter (description/globs/alwaysApply) is stripped so it
- * can't pollute the compiled query's content tokens.
+ * Multi-file sources (rules directories) are concatenated in resolve order.
+ * A leading YAML frontmatter block (Cursor description/globs/alwaysApply,
+ * Claude Code paths, Copilot applyTo, Windsurf trigger, Kiro inclusion) is
+ * stripped from every file so it can't pollute the compiled query's content
+ * tokens.
  */
 export function readContextSource(resolved: ResolvedContext): string | null {
   const parts: string[] = [];
   for (const path of resolved.paths) {
     let raw = readFileCapped(path);
     if (raw === null) continue;
-    if (path.endsWith(".mdc")) raw = stripFrontmatter(raw);
+    raw = stripFrontmatter(raw);
     if (raw.trim()) parts.push(raw);
   }
   if (parts.length === 0) return null;
@@ -72,5 +74,5 @@ function readFileCapped(path: string): string | null {
 }
 
 function stripFrontmatter(markdown: string): string {
-  return markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "");
+  return markdown.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, "");
 }

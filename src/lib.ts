@@ -18,7 +18,15 @@ export { HostedMcpClient, DEFAULT_HOSTED_MCP_URL, UPGRADE_HINT, type HostedMcpOp
 export { compileQuery } from "./compile.js";
 export { parseHarnessContext } from "./context/parse.js";
 export { findContextSource, readContextSource, MAX_CONTEXT_FILE_BYTES } from "./context/read.js";
-export { CONTEXT_SOURCES, type ContextSource, type ResolvedContext } from "./context/sources.js";
+export {
+  CONTEXT_SOURCES,
+  MAX_RULES_DEPTH,
+  MAX_RULES_FILES,
+  readFrontmatterField,
+  walkRulesDir,
+  type ContextSource,
+  type ResolvedContext,
+} from "./context/sources.js";
 export {
   ProjectMemory,
   BOOST_MIN_CITED,
