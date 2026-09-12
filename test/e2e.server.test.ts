@@ -61,6 +61,7 @@ function makeConfig(root: string, tDir: string): Config {
     baseUrl: "https://api.example.test",
     projectRoot: root,
     readContext: true,
+    readManifests: true,
     harness: "test-harness",
     telemetry: true,
     telemetryDir: tDir,
@@ -437,6 +438,68 @@ describe("you-aware e2e", () => {
     expect(freeFake.requests.at(-1)!.params.freshness).toBe("fresh");
     await c.close();
     await keyless.close();
+  });
+
+  it("pins the installed dependency version onto queries that name it, and shows it in the trace", async () => {
+    const pinRoot = mkdtempSync(join(tmpdir(), "you-aware-pin-"));
+    writeFileSync(join(pinRoot, "AGENTS.md"), "# Pin project\n\n## Trusted Sources\n- react.dev\n");
+    writeFileSync(join(pinRoot, "package.json"), JSON.stringify({ dependencies: { react: "^19.0.0", zod: "^3.0.0" } }));
+    mkdirSync(join(pinRoot, "node_modules", "react"), { recursive: true });
+    writeFileSync(join(pinRoot, "node_modules", "react", "package.json"), JSON.stringify({ version: "19.2.1" }));
+
+    const pinFake = new FakeClient();
+    const cfg = makeConfig(pinRoot, telemetryDir);
+    const s = buildServer({
+      config: cfg,
+      client: pinFake,
+      tier: "keyed",
+      telemetry: new Telemetry({ enabled: false, dir: telemetryDir }),
+      session: new SessionMemory(),
+      memory: makeMemory(cfg),
+    });
+    const c = await connect(s);
+
+    const res = (await c.callTool({
+      name: "search",
+      arguments: { query: "react useEffect cleanup function" },
+    })) as CallToolResult;
+    const sc = res.structuredContent as { trace: Record<string, unknown> };
+    expect(sc.trace.query_compiled).toBe('react useEffect cleanup function "react 19.2"');
+    expect(sc.trace.dependency_versions_applied).toEqual(["react 19.2 (installed)"]);
+    expect(pinFake.requests.at(-1)!.query).toContain('"react 19.2"');
+    const text = (res.content as { type: string; text: string }[]).map((x) => x.text).join("\n");
+    expect(text).toContain('dependency_versions_applied: ["react 19.2 (installed)"]');
+
+    // A dependency the query does not name never rides along; a manifest-only
+    // range pins to the major.
+    const zod = (await c.callTool({ name: "search", arguments: { query: "zod schema refine" } })) as CallToolResult;
+    const zodSc = zod.structuredContent as { trace: Record<string, unknown> };
+    expect(zodSc.trace.query_compiled).toBe('zod schema refine "zod 3"');
+    expect(zodSc.trace.dependency_versions_applied).toEqual(["zod 3 (major)"]);
+    expect(String(zodSc.trace.query_compiled)).not.toContain("react");
+
+    // Opting out leaves the query untouched.
+    const off = buildServer({
+      config: { ...cfg, readManifests: false },
+      client: new FakeClient(),
+      tier: "keyed",
+      telemetry: new Telemetry({ enabled: false, dir: telemetryDir }),
+      session: new SessionMemory(),
+      memory: makeMemory(cfg),
+    });
+    const offClient = await connect(off);
+    const offRes = (await offClient.callTool({
+      name: "search",
+      arguments: { query: "react useEffect cleanup function" },
+    })) as CallToolResult;
+    const offSc = offRes.structuredContent as { trace: Record<string, unknown> };
+    expect(offSc.trace.query_compiled).toBe("react useEffect cleanup function");
+    expect(offSc.trace.dependency_versions_applied).toEqual([]);
+
+    await offClient.close();
+    await off.close();
+    await c.close();
+    await s.close();
   });
 
   it("ignores report_outcome URLs that were never shown this session", async () => {

@@ -15,6 +15,8 @@ export interface Trace {
   /** Domains soft-boosted from per-project memory (cited across prior sessions). */
   memory_boost: string[];
   decisions_applied: string[];
+  /** Version pins injected from the project's dependency manifests, e.g. "react 19.2 (installed)". */
+  dependency_versions_applied: string[];
   project_context_chars: number;
   freshness: Freshness | "default";
   pre_rank_top_3: string[];
@@ -36,6 +38,7 @@ export function formatTrace(t: Trace): string {
     `  blocked_sources_applied: ${list(t.blocked_sources_applied)}`,
     `  memory_boost: ${list(t.memory_boost)}`,
     `  decisions_applied: ${list(t.decisions_applied.map(quote))}`,
+    `  dependency_versions_applied: ${list(t.dependency_versions_applied.map(quote))}`,
     `  project_context_chars: ${t.project_context_chars}`,
     `  freshness: ${quote(t.freshness)}`,
     `  pre_rank_top_3: ${list(t.pre_rank_top_3)}`,

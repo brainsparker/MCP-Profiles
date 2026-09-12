@@ -100,6 +100,23 @@ All parameters are optional. With everything omitted you get exactly today's Sea
 
 Opt out of file reading entirely with `YOU_AWARE_READ_CONTEXT=off` (model-population only).
 
+### Dependency versions: the context nobody has to write
+
+The most common way an agent goes wrong on a library question is version drift: it answers for the version in its training data, not the one the project runs. The project's dependency manifest already knows the answer, so `you-aware` reads it. When a query names a dependency, the version the project actually runs is compiled into the query as a quoted term:
+
+```
+"react useEffect cleanup function"
+        ▼  package.json says react ^19.0.0; node_modules/react says 19.2.1
+react useEffect cleanup function "react 19.2"
+```
+
+- **Manifests read:** `package.json`, `pyproject.toml` (PEP 621, dependency groups, Poetry), `requirements.txt`, `go.mod`, `Cargo.toml`, found by walking up from the project root (nearest directory wins, so a package inside a monorepo uses its own manifest).
+- **Precision:** installed version (`node_modules`) beats lockfile (`package-lock.json`, `uv.lock`, `poetry.lock`, `Cargo.lock`) beats manifest specifier. Precisely known versions pin to major.minor (`react 19.2`); a range that only fixes the major pins to the major (`react 18` for `^18.2.0`); 0.x versions always keep the minor.
+- **Matching:** only dependencies the query names are pinned, at most two per query, including common spellings (`nextjs`, `tanstack`, `sklearn`) and Go modules by last path segment (`gin`). A query that already carries a version (`react 19 use hook`) or asks about moving versions (`upgrade`, `migrate`, `changelog`, `breaking changes`) is left alone.
+- **Trace:** every pin shows up as `dependency_versions_applied: ["react 19.2 (installed)"]`, so you can see exactly why a version landed in the query.
+
+Only the pin term for a dependency the query already named can leave the machine; the manifest itself, unrelated dependencies, and paths never do. Opt out with `YOU_AWARE_MANIFESTS=off` (or `--no-manifests`); `YOU_AWARE_READ_CONTEXT=off` disables it too.
+
 ### Retrieval memory (the write-back loop)
 
 Reading context makes the first search good; remembering outcomes makes every search after it better. After the agent uses results, it calls `report_outcome` with the URLs it actually cited (every result set carries a one-line reminder, and the [companion skill](#companion-skill) reinforces it). The server keeps per-project domain stats locally — the store never leaves the machine; cited domains appear in telemetry like any other parameter — and puts them to work twice:
@@ -114,6 +131,7 @@ Cited URLs are validated against what search actually returned this session, so 
 Context delivers the most value compiled into the query shape the workload actually has — lexical, operator-heavy:
 
 - `project_context` → vocabulary injection: stack disambiguation terms, topically relevant library names, and version numbers appended as quoted terms
+- **Dependency manifests** → version pins: a query that names a dependency gets the version the project runs appended as a quoted term (`"react 19.2"`), resolved from `node_modules`, the lockfile, or the manifest specifier
 - **Decisions ledger** → negative vocabulary: rejected options become exclusion terms (a project that rejected `moment.js` gets `-moment` on date-library queries — and never on queries that mention moment themselves)
 - `trusted_sources` → always recall-preserving boost: the native boost parameter in `auto`/`native`, the client-side rank partition in `operators` — never a positive `site:` whitelist (an answer that lives off your trusted domains must still be findable)
 - `blocked_sources` → `-site:` negation operators or the filter parameter
@@ -135,6 +153,7 @@ trace:
   blocked_sources_applied: [w3schools.com]
   memory_boost: [blog.example.com]
   decisions_applied: ["moment.js rejected → -moment"]
+  dependency_versions_applied: ["date-fns 4.1 (installed)"]
   project_context_chars: 1284
   freshness: "stable"
   pre_rank_top_3: [...]
@@ -154,6 +173,7 @@ CLI flag > environment variable > default.
 | `--harness` | `YOU_AWARE_HARNESS` | `unknown` | harness identifier stamped on Tier 2 telemetry events |
 | `--no-context-read` | `YOU_AWARE_READ_CONTEXT=off` | on | disable the deterministic file-read |
 | `--context-fallback head` | `YOU_AWARE_CONTEXT_FALLBACK=head` | off | opt in: without a `## Project Context` section, send the top 4 KB of the context file as `project_context` |
+| `--no-manifests` | `YOU_AWARE_MANIFESTS=off` | on | disable dependency-manifest reading (no version pins on queries that name a dependency) |
 | `--no-memory` | `YOU_AWARE_MEMORY=off` | on | disable per-project retrieval memory (boosts, suggestions, `report_outcome`) |
 | `--data-dir` | `YOU_AWARE_DATA_DIR` | telemetry dir | where the local (Tier 1) per-project memory store lives |
 | `--no-telemetry` | `YOU_AWARE_TELEMETRY=off` | on | opt out of Tier 2 telemetry |

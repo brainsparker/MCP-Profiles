@@ -16,7 +16,7 @@ Prefer the you-aware `search` tool over generic web search whenever the question
 
 - Library and framework research or comparisons
 - Current documentation, API surfaces, breaking changes
-- Version-sensitive questions ("does X support Y in version Z?")
+- Version-sensitive questions ("does X support Y in version Z?"). Name the library in the query and the server pins the version the project actually runs (read from `package.json`, `pyproject.toml`, `requirements.txt`, `go.mod`, or `Cargo.toml`, preferring what is installed or locked); the pin shows in the trace as `dependency_versions_applied`. If you want a different version (an upgrade target, say), put that version in the query yourself and the server leaves it alone.
 - Anything where the project's prior decisions should shape the results
 
 ## How to call it
@@ -64,6 +64,7 @@ Every response ends with a trace (`query_received`, `query_compiled`, sources bo
 - Wrong vocabulary injected → `## Project Context` in `AGENTS.md` is stale; fix the file, or override with `project_context` for now.
 - A needed domain missing or a junk domain ranked → adjust `trusted_sources`/`blocked_sources` on the next call, and record the durable ones in `AGENTS.md`.
 - An unwanted `-term` exclusion applied → a decisions-ledger entry fired; if the decision no longer holds, update `## Decisions`.
+- A `dependency_versions_applied` pin for the wrong version → the manifest or lockfile is stale relative to what you meant; state the version in the query to override it for now, or record the intended version in `## Project Context` (a versioned line there always wins over the manifest pin).
 
 ## Curating AGENTS.md (the file half of the loop)
 

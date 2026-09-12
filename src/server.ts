@@ -3,6 +3,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import type { Config } from "./config.js";
 import { compileQuery } from "./compile.js";
+import { findManifests, pinDependencies } from "./context/manifest.js";
 import { findContextSource, readContextSource } from "./context/read.js";
 import { normalizeDomain, parseHarnessContext } from "./context/parse.js";
 import { decompositionRequest, detectMultiHop } from "./decompose.js";
@@ -260,7 +261,7 @@ export function buildServer(deps: ServerDeps): McpServer {
         const trace = traceFor(
           queryReceived,
           "",
-          { trustedBoost: [], blockedApplied: [], decisionsApplied: [] },
+          { trustedBoost: [], blockedApplied: [], decisionsApplied: [], dependencyVersionsApplied: [] },
           {},
           [],
           [],
@@ -297,10 +298,17 @@ export function buildServer(deps: ServerDeps): McpServer {
         ...(prov.final.blocked_sources ?? []),
       ]);
 
+      // Dependency manifests: the version the project actually runs, pinned
+      // onto queries that name the dependency. Read per call like the context
+      // file, so an `npm install` between searches is picked up immediately.
+      const manifests = config.readContext && config.readManifests ? findManifests(config.projectRoot) : null;
+      const dependencyPins = pinDependencies(queryReceived, manifests);
+
       const compiled = compileQuery(queryReceived, prov.final, fileCtx?.decisions ?? [], {
         mode: config.compileMode,
         now: now(),
         freshWindowDays: config.freshWindowDays,
+        dependencyPins,
         // The hosted free tool carries freshness natively; its query parser
         // documents no date operators, so never emit after: on the free tier.
         nativeFreshness: deps.tier === "free",
@@ -328,6 +336,7 @@ export function buildServer(deps: ServerDeps): McpServer {
         tier: deps.tier,
         context_file_read: fileCtx !== null,
         context_source: fileCtx?.source,
+        manifest_read: manifests !== null,
         near_duplicate: dup.nearDuplicate,
         session_duplicate_rate: session.duplicateRate,
         session_calls: session.calls,
@@ -387,6 +396,7 @@ export function buildServer(deps: ServerDeps): McpServer {
       telemetry.record({
         type: "search",
         ...baseEvent,
+        dependency_versions_applied: compiled.dependencyVersionsApplied,
         result_urls: shownUrls,
         memory_boost: ranked.memoryBoosted,
       });
@@ -487,7 +497,12 @@ export function buildServer(deps: ServerDeps): McpServer {
 function traceFor(
   received: string,
   compiledQuery: string,
-  compiled: { trustedBoost: string[]; blockedApplied: string[]; decisionsApplied: string[] },
+  compiled: {
+    trustedBoost: string[];
+    blockedApplied: string[];
+    decisionsApplied: string[];
+    dependencyVersionsApplied: string[];
+  },
   final: SearchParams,
   pre3: string[],
   post3: string[],
@@ -501,6 +516,7 @@ function traceFor(
     blocked_sources_applied: compiled.blockedApplied,
     memory_boost: memoryBoost,
     decisions_applied: compiled.decisionsApplied,
+    dependency_versions_applied: compiled.dependencyVersionsApplied,
     project_context_chars: final.project_context?.length ?? 0,
     freshness: final.freshness ?? "default",
     pre_rank_top_3: pre3,
