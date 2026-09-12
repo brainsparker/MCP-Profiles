@@ -50,6 +50,10 @@ export interface Tier2Event {
   context_file_read?: boolean;
   /** Coarse context-source adapter id (e.g. "agents-md", "cursor") — never a path. */
   context_source?: string;
+  /** Whether a dependency manifest was found and read (no path or contents; those are Tier 1). */
+  manifest_read?: boolean;
+  /** Version pins compiled into the query, e.g. "react 19.2 (installed)"; the same terms already present in query_compiled. */
+  dependency_versions_applied?: string[];
   /** Result interactions: what the agent was shown. */
   result_urls?: string[];
   /** Anti-loop baseline collection (§8.2): near-duplicate query repetition. */

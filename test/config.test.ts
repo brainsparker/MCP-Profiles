@@ -68,3 +68,12 @@ describe("loadConfig", () => {
     ).toBe("from-flag");
   });
 });
+
+describe("loadConfig: dependency manifests", () => {
+  it("reads manifests by default and honors --no-manifests / YOU_AWARE_MANIFESTS=off", () => {
+    expect(loadConfig([], {} as NodeJS.ProcessEnv).readManifests).toBe(true);
+    expect(loadConfig(["--no-manifests"], {} as NodeJS.ProcessEnv).readManifests).toBe(false);
+    expect(loadConfig([], { YOU_AWARE_MANIFESTS: "off" } as NodeJS.ProcessEnv).readManifests).toBe(false);
+    expect(loadConfig([], { YOU_AWARE_MANIFESTS: "" } as NodeJS.ProcessEnv).readManifests).toBe(true);
+  });
+});

@@ -5,6 +5,7 @@
 ## Tier 1 — never leaves the machine
 
 - Raw context/rules-file contents (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.cursor/rules/*.mdc`, `.cursorrules`, `.clinerules`, `.windsurfrules`)
+- Dependency manifests and lockfiles (`package.json`, `pyproject.toml`, `requirements.txt`, `go.mod`, `Cargo.toml`, `node_modules/*/package.json`, `package-lock.json`, `uv.lock`, `poetry.lock`, `Cargo.lock`). They are parsed in-process; the only derived value that can travel is a version pin (`"react 19.2"`) for a dependency the query itself already named, so the new information on the wire is the version number of a library the agent was already asking about. Unrelated dependencies, the dependency list as a whole, and manifest paths never leave the machine. Opt out with `YOU_AWARE_MANIFESTS=off`.
 - Conversation history
 - File paths
 - The per-project retrieval memory — domain citation stats stored under `<data dir>/projects/`, keyed by a local hash of the project path. The store, its path, and the hash never leave the machine (only cited **domains** appear in telemetry outcome events, the same class of data as the source parameters). Opt out entirely with `YOU_AWARE_MEMORY=off`; the store lives under `YOU_AWARE_DATA_DIR` (default: the telemetry dir, `~/.you-aware`) and works independently of the telemetry opt-out.
@@ -19,7 +20,7 @@ The server transmits context-file content **nowhere** except as the populated pa
 
 What telemetry records, when enabled (the default):
 
-- Search queries — both as received from the model and as compiled (the pair is what makes the NL-to-lexical transformation measurable)
+- Search queries — both as received from the model and as compiled (the pair is what makes the NL-to-lexical transformation measurable), plus the list of dependency version pins compiled into the query (`dependency_versions_applied`, the same terms already present in the compiled query) and whether a manifest was found (`manifest_read`, a boolean; never a path)
 - Populated parameter values — both file-read and model-supplied, kept side by side for quality measurement; file-derived `project_context` only when it came from an explicit `## Project Context` section (see above)
 - Result interactions (the URLs returned; the domains the agent reports as cited via `report_outcome`)
 - Outcome signals (near-duplicate query repetition rate, session call counts, memory-boosted domains, and suggestion lifecycle events — a domain suggested for or accepted into `## Trusted Sources`, with its citation counts)
@@ -39,7 +40,8 @@ Why collect it at all: agent-shaped query-and-outcome data is what makes retriev
 
 ## Additional controls
 
-- `YOU_AWARE_READ_CONTEXT=off` (or `--no-context-read`) disables context-file reading entirely; the model populates parameters exclusively.
+- `YOU_AWARE_READ_CONTEXT=off` (or `--no-context-read`) disables context-file reading entirely, including dependency manifests; the model populates parameters exclusively.
+- `YOU_AWARE_MANIFESTS=off` (or `--no-manifests`) disables dependency-manifest reading only; the context file is still read.
 - The search call itself always carries the compiled query and (in `auto`/`native` compile modes) the populated parameters — that *is* the product. In `operators` mode, context reaches You.com only as compiled query text.
 - **Keyless free tier:** without `YDC_API_KEY`, searches route through You.com's hosted MCP endpoint (`api.you.com/mcp?profile=free`) instead of the Search API. The same boundary holds — only the compiled query (plus a freshness window) goes over the wire; the free tool has no other context parameters, and telemetry behaves identically.
 

@@ -20,6 +20,22 @@ export { parseHarnessContext } from "./context/parse.js";
 export { findContextSource, readContextSource, MAX_CONTEXT_FILE_BYTES } from "./context/read.js";
 export { CONTEXT_SOURCES, type ContextSource, type ResolvedContext } from "./context/sources.js";
 export {
+  findManifests,
+  parseManifest,
+  pinDependencies,
+  resolveDependency,
+  pinTerm,
+  displayName,
+  normalizePythonName,
+  MAX_DEPENDENCIES,
+  MAX_PINS,
+  type DeclaredDependency,
+  type DependencyPin,
+  type Ecosystem,
+  type ManifestSet,
+  type VersionPrecision,
+} from "./context/manifest.js";
+export {
   ProjectMemory,
   BOOST_MIN_CITED,
   BOOST_MIN_SESSIONS,

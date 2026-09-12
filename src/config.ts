@@ -22,6 +22,12 @@ export interface Config {
   /** §8.3: developers can opt out of context-file reading entirely (model-population only). */
   readContext: boolean;
   /**
+   * Read the project's dependency manifests (package.json, pyproject.toml,
+   * requirements.txt, go.mod, Cargo.toml) so queries that name a dependency
+   * carry the version the project actually runs. Also off when readContext is off.
+   */
+  readManifests: boolean;
+  /**
    * Opt-in (YOU_AWARE_CONTEXT_FALLBACK=head): without an explicit
    * `## Project Context` section, use the top 4 KB of the context file as
    * project_context on the search call. Off by default — the head is raw file
@@ -113,6 +119,7 @@ export function loadConfig(argv: string[] = [], env: NodeJS.ProcessEnv = process
     baseUrl: str("base-url") ?? nonEmpty(env.YOU_API_BASE_URL) ?? DEFAULT_BASE_URL,
     projectRoot: str("project-root") ?? nonEmpty(env.YOU_AWARE_PROJECT_ROOT) ?? process.cwd(),
     readContext: args.has("no-context-read") ? false : (envFlag(env.YOU_AWARE_READ_CONTEXT) ?? true),
+    readManifests: args.has("no-manifests") ? false : (envFlag(env.YOU_AWARE_MANIFESTS) ?? true),
     contextHeadFallback:
       (str("context-fallback") ?? nonEmpty(env.YOU_AWARE_CONTEXT_FALLBACK))?.toLowerCase() === "head",
     harness: str("harness") ?? nonEmpty(env.YOU_AWARE_HARNESS) ?? "unknown",

@@ -205,3 +205,65 @@ describe("extractVocabulary", () => {
     expect(c.query).toContain('"react 19.2"');
   });
 });
+
+describe("compileQuery: dependency version pins", () => {
+  const reactPin = { name: "react", ecosystem: "npm" as const, version: "19.2.1", precision: "installed" as const, term: "react 19.2" };
+  const zodPin = { name: "zod", ecosystem: "npm" as const, version: "3.25.7", precision: "locked" as const, term: "zod 3.25" };
+
+  it("appends pins as quoted terms and records them with their precision", () => {
+    const c = compileQuery("react useEffect cleanup with zod", {}, [], {
+      mode: "auto",
+      dependencyPins: [reactPin, zodPin],
+      ...OPTS,
+    });
+    expect(c.query).toBe('react useEffect cleanup zod "react 19.2" "zod 3.25"');
+    expect(c.dependencyVersionsApplied).toEqual(["react 19.2 (installed)", "zod 3.25 (locked)"]);
+  });
+
+  it("skips pins on already-lexical queries and in native mode, like vocabulary", () => {
+    const lexical = compileQuery('react "server components" site:react.dev', {}, [], {
+      mode: "auto",
+      dependencyPins: [reactPin],
+      ...OPTS,
+    });
+    expect(lexical.query).toBe('react "server components" site:react.dev');
+    expect(lexical.dependencyVersionsApplied).toEqual([]);
+    const native = compileQuery("react useEffect cleanup", {}, [], {
+      mode: "native",
+      dependencyPins: [reactPin],
+      ...OPTS,
+    });
+    expect(native.query).toBe("react useEffect cleanup");
+    expect(native.dependencyVersionsApplied).toEqual([]);
+  });
+
+  it("defers to a versioned Project Context line for the same library", () => {
+    // The developer wrote "React 19.1" on purpose; the manifest says 19.2.1.
+    // The authored line wins and the pin is skipped rather than doubled.
+    const c = compileQuery(
+      "react useEffect cleanup",
+      { project_context: "React 19.1 app with server components." },
+      [],
+      { mode: "auto", dependencyPins: [reactPin], ...OPTS },
+    );
+    expect(c.vocabularyInjected).toEqual(["react 19.1"]);
+    expect(c.query).not.toContain("react 19.2");
+    expect(c.dependencyVersionsApplied).toEqual([]);
+  });
+
+  it("still pins when Project Context names the library without a version", () => {
+    const c = compileQuery(
+      "useEffect cleanup in react",
+      { project_context: "React app." },
+      [],
+      { mode: "auto", dependencyPins: [reactPin], ...OPTS },
+    );
+    expect(c.query).toContain('"react 19.2"');
+    expect(c.dependencyVersionsApplied).toEqual(["react 19.2 (installed)"]);
+  });
+
+  it("reports an empty list when no pins are supplied", () => {
+    const c = compileQuery("date parsing", params, [], { mode: "auto", ...OPTS });
+    expect(c.dependencyVersionsApplied).toEqual([]);
+  });
+});

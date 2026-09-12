@@ -1,5 +1,6 @@
 import type { CompileMode } from "./config.js";
 import type { Decision, SearchParams } from "./types.js";
+import type { DependencyPin } from "./context/manifest.js";
 import { contentTokens } from "./context/parse.js";
 
 /**
@@ -19,6 +20,12 @@ export interface CompileOptions {
    * after: emission so freshness isn't applied twice or as a literal term.
    */
   nativeFreshness?: boolean;
+  /**
+   * Dependency versions the query names, resolved from the project's
+   * manifests (context/manifest.ts). Injected as quoted terms under the same
+   * gating as vocabulary: never on already-lexical queries or in native mode.
+   */
+  dependencyPins?: DependencyPin[];
 }
 
 export interface CompiledQuery {
@@ -31,6 +38,8 @@ export interface CompiledQuery {
   decisionsApplied: string[];
   /** Vocabulary terms injected from project_context. */
   vocabularyInjected: string[];
+  /** Dependency version pins injected from the project's manifests, e.g. "react 19.2 (installed)". */
+  dependencyVersionsApplied: string[];
 }
 
 /** Languages/frameworks used as disambiguation terms when found in project context. */
@@ -158,6 +167,7 @@ export function compileQuery(
   const queryTokens = new Set(contentTokens(received).concat(contentTokens(query)));
   const vocabularyInjected: string[] = [];
   const decisionsApplied: string[] = [];
+  const dependencyVersionsApplied: string[] = [];
 
   // project_context → lexical vocabulary injection (§8.2), relevance-gated so
   // unrelated libraries don't pollute the query. Skipped for already-lexical
@@ -177,6 +187,22 @@ export function compileQuery(
       query = `${query} "${cand.term}"`;
       vocabularyInjected.push(cand.term);
       queryTokens.add(cand.term);
+    }
+  }
+
+  // Manifest-derived version pins: the query already names the library (that
+  // is how the pin was matched), so the only new information on the wire is
+  // the version the project actually runs. A `## Project Context` line that
+  // already carries a version for the same library ("React 19.1") wins, since
+  // the developer wrote it on purpose, so the pin is skipped rather than doubled.
+  if (!lexical && opts.mode !== "native" && opts.dependencyPins?.length) {
+    for (const pin of opts.dependencyPins) {
+      const name = pin.term.split(" ")[0]!;
+      if (queryTokens.has(pin.term)) continue;
+      if (vocabularyInjected.some((t) => t.startsWith(`${name} `) && /^\d/.test(t.slice(name.length + 1)))) continue;
+      query = `${query} "${pin.term}"`;
+      dependencyVersionsApplied.push(`${pin.term} (${pin.precision})`);
+      queryTokens.add(pin.term);
     }
   }
 
@@ -240,5 +266,6 @@ export function compileQuery(
     blockedApplied,
     decisionsApplied,
     vocabularyInjected,
+    dependencyVersionsApplied,
   };
 }

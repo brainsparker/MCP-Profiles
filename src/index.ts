@@ -47,6 +47,9 @@ async function main(): Promise<void> {
     );
   }
   if (!config.readContext) log.info("context read: disabled (model-population only)");
+  if (config.readContext && !config.readManifests) {
+    log.info("dependency manifests: disabled (queries naming a dependency are not pinned to the installed version)");
+  }
   if (!config.memory) log.info("project memory: disabled (no local outcome tracking, boosts, or suggestions)");
 
   const tier: "free" | "keyed" = config.apiKey ? "keyed" : "free";

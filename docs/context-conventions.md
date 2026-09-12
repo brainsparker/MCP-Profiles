@@ -73,3 +73,26 @@ stable
 - A rejected option in `## Decisions` must look like an identifier (`moment.js`, `styled-components`, `@tanstack/query`) or be backticked (`` Avoid `lodash` ``) — plain-prose guidance like "Avoid premature optimization" is deliberately ignored, because a wrong `-exclusion` destroys recall.
 - Opt out of file reading entirely with `YOU_AWARE_READ_CONTEXT=off`; the model can still populate every parameter per call.
 - The companion skill in [`skills/you-aware/`](../skills/you-aware) teaches agents these conventions, including when to write them back.
+
+## Dependency manifests (automatic, no section needed)
+
+Alongside the context file, `you-aware` reads the project's dependency manifests so a query that names a dependency carries the version the project actually runs. Nothing has to be authored for this; if you already keep a `## Project Context` line like `React 19` for a library, that line wins and the manifest pin for the same library is skipped.
+
+Discovery walks up from the project root (up to 6 levels, nearest directory wins) and reads every manifest found in that directory:
+
+| Manifest | What is read | Lockfile consulted |
+|---|---|---|
+| `package.json` | `dependencies`, `devDependencies` | `node_modules/<name>/package.json` (installed), then `package-lock.json` |
+| `pyproject.toml` | `[project] dependencies`, `[dependency-groups]`, `[tool.poetry.dependencies]`, `[tool.poetry.group.*.dependencies]` | `uv.lock`, `poetry.lock` |
+| `requirements.txt` | requirement lines (flags, `-r` includes, URLs skipped) | `uv.lock`, `poetry.lock` |
+| `go.mod` | direct `require` entries (`// indirect` and pseudo-versions skipped) | none needed; go.mod versions are exact |
+| `Cargo.toml` | `[dependencies]`, `[dev-dependencies]`, `[build-dependencies]`, `[workspace.dependencies]` | `Cargo.lock` |
+
+How the pin is written:
+
+- Installed, locked, or exactly pinned versions become `name major.minor` (`react 19.2`, `pydantic 2.11`). Ranges that only fix the major (`^18.2.0`, `>=2.0`, Cargo's bare `"1.0"`) become `name major` (`react 18`). 0.x versions keep the minor either way (`reqwest 0.12`).
+- Scoped npm packages pin by their bare name (`@tanstack/react-query` → `react-query 5.62`); Go modules by their last path segment (`github.com/gin-gonic/gin` → `gin 1.10`).
+- At most two pins per query, in query order. A query is matched on the package name, common spellings (`nextjs`, `tanstack`, `sklearn`, `pytorch`), scoped names without the `@`, Python names in `-`/`_`/`.` spellings, and Go modules by last segment (except `golang.org/x/*`, whose segments are ordinary words).
+- No pin when the query already carries a version (`react 19 use hook`, `react@18`) or asks about moving between versions (`upgrade`, `migrate`, `changelog`, `release notes`, `breaking changes`, `what's new`, `latest version`).
+
+Every pin is visible in the trace as `dependency_versions_applied: ["react 19.2 (installed)"]`, with the precision in parentheses (`installed`, `locked`, `exact`, `minor`, `major`). Disable with `YOU_AWARE_MANIFESTS=off` or `--no-manifests`; `YOU_AWARE_READ_CONTEXT=off` disables it as well. Manifests over 256 KiB are skipped, and at most 500 dependencies are considered.
