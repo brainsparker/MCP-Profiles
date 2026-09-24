@@ -92,13 +92,13 @@ All parameters are optional. With everything omitted you get exactly today's Sea
 
 ### Parameter population: deterministic file-read + model merge
 
-1. At call time, the server reads your project's context file — `AGENTS.md` first, then `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, and Cursor/Cline/Windsurf rules files — walking up from the project root (the nearest directory wins; within a directory, `AGENTS.md` wins).
+1. At call time, the server reads your project's context file — `AGENTS.md` first, then `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, and Cursor/Cline/Windsurf rules files — walking up from the project root (the nearest directory wins; within a directory, `AGENTS.md` wins). `@path` imports in `CLAUDE.md` (Claude Code) and `@./file.md` imports in `GEMINI.md` (Gemini CLI) are followed the way those harnesses follow them, so a `## Trusted Sources` list kept in an imported file counts ([details](./docs/context-conventions.md#imports)).
 2. It parses [the section conventions this server defines](./docs/context-conventions.md) — `## Trusted Sources`, `## Blocked Sources`, `## Decisions`, `## Project Context`, `## Freshness` — into ground-truth parameter values, whatever file they live in. No structured config required, and no section is: a file with just `## Trusted Sources` already improves ranking. File content becomes free-text search context only from an explicit `## Project Context` section (an opt-in head fallback exists: `YOU_AWARE_CONTEXT_FALLBACK=head`).
 3. The calling model may *also* populate the same parameters from its working context.
 4. The final API call uses whichever source produces the higher-quality parameter, with the deterministic file-read as the safety net: source lists are unioned, and a model-supplied `project_context` (which can fold in conversation-level context the file can't see) overrides the file-derived one.
 5. Both populated values are logged for ongoing quality measurement.
 
-Opt out of file reading entirely with `YOU_AWARE_READ_CONTEXT=off` (model-population only).
+Opt out of file reading entirely with `YOU_AWARE_READ_CONTEXT=off` (model-population only), or keep the file-read but skip imports with `YOU_AWARE_FOLLOW_IMPORTS=off`.
 
 ### Retrieval memory (the write-back loop)
 
@@ -153,6 +153,7 @@ CLI flag > environment variable > default.
 | `--project-root` | `YOU_AWARE_PROJECT_ROOT` | cwd | where to look for the context file (`AGENTS.md`, `CLAUDE.md`, rules files, …) |
 | `--harness` | `YOU_AWARE_HARNESS` | `unknown` | harness identifier stamped on Tier 2 telemetry events |
 | `--no-context-read` | `YOU_AWARE_READ_CONTEXT=off` | on | disable the deterministic file-read |
+| `--no-imports` | `YOU_AWARE_FOLLOW_IMPORTS=off` | on | read `CLAUDE.md` / `GEMINI.md` verbatim instead of following their `@path` imports |
 | `--context-fallback head` | `YOU_AWARE_CONTEXT_FALLBACK=head` | off | opt in: without a `## Project Context` section, send the top 4 KB of the context file as `project_context` |
 | `--no-memory` | `YOU_AWARE_MEMORY=off` | on | disable per-project retrieval memory (boosts, suggestions, `report_outcome`) |
 | `--data-dir` | `YOU_AWARE_DATA_DIR` | telemetry dir | where the local (Tier 1) per-project memory store lives |

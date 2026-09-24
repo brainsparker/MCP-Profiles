@@ -22,6 +22,12 @@ export interface Config {
   /** §8.3: developers can opt out of context-file reading entirely (model-population only). */
   readContext: boolean;
   /**
+   * Follow `@path` imports in CLAUDE.md (Claude Code) and GEMINI.md (Gemini
+   * CLI) the way those harnesses do, so sections kept in imported files are
+   * seen. On by default; imported files stay Tier 1 like the memory file.
+   */
+  followImports: boolean;
+  /**
    * Opt-in (YOU_AWARE_CONTEXT_FALLBACK=head): without an explicit
    * `## Project Context` section, use the top 4 KB of the context file as
    * project_context on the search call. Off by default — the head is raw file
@@ -113,6 +119,7 @@ export function loadConfig(argv: string[] = [], env: NodeJS.ProcessEnv = process
     baseUrl: str("base-url") ?? nonEmpty(env.YOU_API_BASE_URL) ?? DEFAULT_BASE_URL,
     projectRoot: str("project-root") ?? nonEmpty(env.YOU_AWARE_PROJECT_ROOT) ?? process.cwd(),
     readContext: args.has("no-context-read") ? false : (envFlag(env.YOU_AWARE_READ_CONTEXT) ?? true),
+    followImports: args.has("no-imports") ? false : (envFlag(env.YOU_AWARE_FOLLOW_IMPORTS) ?? true),
     contextHeadFallback:
       (str("context-fallback") ?? nonEmpty(env.YOU_AWARE_CONTEXT_FALLBACK))?.toLowerCase() === "head",
     harness: str("harness") ?? nonEmpty(env.YOU_AWARE_HARNESS) ?? "unknown",

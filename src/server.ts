@@ -56,7 +56,7 @@ function readHarnessContext(config: Config): HarnessContext | null {
   if (!config.readContext) return null;
   const resolved = findContextSource(config.projectRoot);
   if (!resolved) return null;
-  const raw = readContextSource(resolved);
+  const raw = readContextSource(resolved, { followImports: config.followImports });
   if (raw === null) return null;
   const ctx = parseHarnessContext(raw, resolved.paths[0]!, {
     headFallback: config.contextHeadFallback,

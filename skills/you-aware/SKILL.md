@@ -67,7 +67,7 @@ Every response ends with a trace (`query_received`, `query_compiled`, sources bo
 
 ## Curating AGENTS.md (the file half of the loop)
 
-The server reads the nearest context file walking up from the project root — per directory it checks `AGENTS.md`, then `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.cursor/rules/*.mdc` + `.cursorrules`, `.clinerules`, `.windsurfrules`; the first hit wins. The section conventions below work in any of them, but prefer recording durable context in `AGENTS.md` — it has top precedence and every harness reads it. Headings match case-insensitively at any heading level, and none are required:
+The server reads the nearest context file walking up from the project root — per directory it checks `AGENTS.md`, then `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.cursor/rules/*.mdc` + `.cursorrules`, `.clinerules`, `.windsurfrules`; the first hit wins. `@path` imports in `CLAUDE.md` and `@./file.md` imports in `GEMINI.md` are followed, so sections kept in an imported file count too. The section conventions below work in any of them, but prefer recording durable context in `AGENTS.md` — it has top precedence and every harness reads it. Headings match case-insensitively at any heading level, and none are required:
 
 ### Project Context
 
