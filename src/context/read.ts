@@ -1,6 +1,7 @@
 import { closeSync, openSync, readFileSync, readSync, statSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import { log } from "../util/logger.js";
+import { IMPORT_SYNTAX_BY_SOURCE, expandImports } from "./imports.js";
 import { CONTEXT_SOURCES, type ResolvedContext } from "./sources.js";
 
 /**
@@ -35,13 +36,31 @@ export function findContextSource(start: string, maxDepth = 6): ResolvedContext 
  * Multi-file sources (.cursor/rules/*.mdc) are concatenated in resolve order;
  * .mdc YAML frontmatter (description/globs/alwaysApply) is stripped so it
  * can't pollute the compiled query's content tokens.
+ *
+ * Sources whose harness defines an import grammar (CLAUDE.md's `@path`,
+ * GEMINI.md's `@./file.md`) have their imports spliced in the way the harness
+ * itself loads them (imports.ts), so a `## Trusted Sources` section kept in an
+ * imported file is seen. Imported files are Tier 1 like the memory file itself.
  */
-export function readContextSource(resolved: ResolvedContext): string | null {
+export interface ReadContextOptions {
+  /** Follow `@path` imports for sources that define them. Default true. */
+  followImports?: boolean;
+}
+
+export function readContextSource(resolved: ResolvedContext, opts: ReadContextOptions = {}): string | null {
+  const syntax = opts.followImports === false ? undefined : IMPORT_SYNTAX_BY_SOURCE[resolved.sourceId];
   const parts: string[] = [];
   for (const path of resolved.paths) {
     let raw = readFileCapped(path);
     if (raw === null) continue;
     if (path.endsWith(".mdc")) raw = stripFrontmatter(raw);
+    if (syntax) {
+      raw = expandImports(raw, path, {
+        syntax,
+        readFile: readFileCapped,
+        maxTotalBytes: MAX_CONTEXT_FILE_BYTES,
+      }).text;
+    }
     if (raw.trim()) parts.push(raw);
   }
   if (parts.length === 0) return null;

@@ -4,7 +4,7 @@
 
 ## Tier 1 — never leaves the machine
 
-- Raw context/rules-file contents (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.cursor/rules/*.mdc`, `.cursorrules`, `.clinerules`, `.windsurfrules`)
+- Raw context/rules-file contents (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.cursor/rules/*.mdc`, `.cursorrules`, `.clinerules`, `.windsurfrules`), including every file pulled in through a `CLAUDE.md` or `GEMINI.md` `@path` import. Imports are only followed inside the context file's directory tree or, for `~/` paths, inside your home directory; anything else is skipped with a stderr warning that names the file's basename only. `YOU_AWARE_FOLLOW_IMPORTS=off` disables following entirely.
 - Conversation history
 - File paths
 - The per-project retrieval memory — domain citation stats stored under `<data dir>/projects/`, keyed by a local hash of the project path. The store, its path, and the hash never leave the machine (only cited **domains** appear in telemetry outcome events, the same class of data as the source parameters). Opt out entirely with `YOU_AWARE_MEMORY=off`; the store lives under `YOU_AWARE_DATA_DIR` (default: the telemetry dir, `~/.you-aware`) and works independently of the telemetry opt-out.

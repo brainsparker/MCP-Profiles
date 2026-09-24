@@ -17,7 +17,21 @@ export {
 export { HostedMcpClient, DEFAULT_HOSTED_MCP_URL, UPGRADE_HINT, type HostedMcpOptions } from "./hostedClient.js";
 export { compileQuery } from "./compile.js";
 export { parseHarnessContext } from "./context/parse.js";
-export { findContextSource, readContextSource, MAX_CONTEXT_FILE_BYTES } from "./context/read.js";
+export {
+  findContextSource,
+  readContextSource,
+  MAX_CONTEXT_FILE_BYTES,
+  type ReadContextOptions,
+} from "./context/read.js";
+export {
+  expandImports,
+  IMPORT_SYNTAX_BY_SOURCE,
+  MAX_IMPORT_DEPTH,
+  type ExpandImportsOptions,
+  type ExpandImportsResult,
+  type ImportSkipReason,
+  type ImportSyntax,
+} from "./context/imports.js";
 export { CONTEXT_SOURCES, type ContextSource, type ResolvedContext } from "./context/sources.js";
 export {
   ProjectMemory,

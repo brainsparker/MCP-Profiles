@@ -47,6 +47,7 @@ async function main(): Promise<void> {
     );
   }
   if (!config.readContext) log.info("context read: disabled (model-population only)");
+  else if (!config.followImports) log.info("context imports: disabled (@path imports in CLAUDE.md/GEMINI.md are not followed)");
   if (!config.memory) log.info("project memory: disabled (no local outcome tracking, boosts, or suggestions)");
 
   const tier: "free" | "keyed" = config.apiKey ? "keyed" : "free";
