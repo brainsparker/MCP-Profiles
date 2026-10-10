@@ -1,5 +1,5 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { loadConfig } from "./config.js";
+import { loadConfig, resolveDailyBudget } from "./config.js";
 import { HostedMcpClient } from "./hostedClient.js";
 import { ProjectMemory } from "./memory.js";
 import { buildServer } from "./server.js";
@@ -50,6 +50,19 @@ async function main(): Promise<void> {
   if (!config.memory) log.info("project memory: disabled (no local outcome tracking, boosts, or suggestions)");
 
   const tier: "free" | "keyed" = config.apiKey ? "keyed" : "free";
+  const dailyBudget = resolveDailyBudget(config, tier);
+  log.info(
+    dailyBudget === undefined
+      ? "search budget: untracked (set YOU_AWARE_DAILY_BUDGET=<n> to count searches per day)"
+      : `search budget: ${dailyBudget}/day by local count, advisory only (budget_remaining in every trace; ` +
+          `counter at ${config.dataDir}/budget.json; disable: YOU_AWARE_DAILY_BUDGET=off)`,
+  );
+  log.info(
+    config.cache
+      ? `session cache: on (identical searches reuse results for ${config.cacheTtlSeconds}s and spend no quota; ` +
+          `disable: YOU_AWARE_CACHE=off)`
+      : "session cache: off (every search goes upstream)",
+  );
   let effectiveConfig = config;
   if (tier === "free") {
     log.info(

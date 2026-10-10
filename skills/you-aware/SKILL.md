@@ -59,11 +59,20 @@ Do not retry the original compound query unchanged.
 
 ## Reading the trace
 
-Every response ends with a trace (`query_received`, `query_compiled`, sources boosted/blocked, decisions applied, freshness, pre/post-rank top 3). When results look off, the trace says why:
+Every response ends with a trace (`query_received`, `query_compiled`, sources boosted/blocked, decisions applied, freshness, pre/post-rank top 3, `cache`, `budget_remaining`). When results look off, the trace says why:
 
 - Wrong vocabulary injected → `## Project Context` in `AGENTS.md` is stale; fix the file, or override with `project_context` for now.
 - A needed domain missing or a junk domain ranked → adjust `trusted_sources`/`blocked_sources` on the next call, and record the durable ones in `AGENTS.md`.
 - An unwanted `-term` exclusion applied → a decisions-ledger entry fired; if the decision no longer holds, update `## Decisions`.
+
+## Spending the search budget
+
+`budget_remaining` is the number of searches left today by the server's local count (`untracked` on a keyed tier with no limit configured). On the keyless free tier it starts at about 100 per day per machine. Treat it as a budget, not a suggestion:
+
+- Before another search, check whether a result set you already have answers the question. A response that carries a `budget` warning line means the budget is low or gone; stop searching and work from what you have unless the gap is real.
+- An identical repeat search (same query text and parameters) is served from the session cache (`cache: "hit"`) and costs nothing. Rephrasing the same question costs a search. When you must retry, retry the exact query.
+- Do not loop. If two searches on one question have not surfaced an answer, change the question (narrow it, add a `site:` operator, or add `project_context`) rather than issuing a third variant of the same query.
+- If a search fails with a rate-limit error, the day's budget is exhausted upstream. Further searches will fail until the reset time in the warning; say so rather than retrying.
 
 ## Curating AGENTS.md (the file half of the loop)
 

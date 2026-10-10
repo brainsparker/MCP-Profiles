@@ -8,6 +8,8 @@
 - Conversation history
 - File paths
 - The per-project retrieval memory — domain citation stats stored under `<data dir>/projects/`, keyed by a local hash of the project path. The store, its path, and the hash never leave the machine (only cited **domains** appear in telemetry outcome events, the same class of data as the source parameters). Opt out entirely with `YOU_AWARE_MEMORY=off`; the store lives under `YOU_AWARE_DATA_DIR` (default: the telemetry dir, `~/.you-aware`) and works independently of the telemetry opt-out.
+- The daily search budget counter at `<data dir>/budget.json`: a UTC day stamp, a count of upstream searches made that day, and an exhausted flag set when the upstream rejected a call for quota. No queries, no project identifiers. It is machine-wide (the quota it tracks is per IP) and owner-readable only (0600). Telemetry carries the derived `budget_remaining` number on search and error events, never the file. Disable with `YOU_AWARE_DAILY_BUDGET=off`.
+- The session result cache: recent search results held in process memory so an identical repeat search is answered without an upstream call. Nothing is written to disk; the cache dies with the process. Telemetry records `cache_hit: true|false` per search event. Disable with `YOU_AWARE_CACHE=off`.
 
 The server transmits context-file content **nowhere** except as the populated parameters described below. `project_context` is the only free-text field and is capped at 4 KB. **By default, file-derived `project_context` comes only from an explicit `## Project Context` section** — a section you authored for exactly this purpose. Without one, no `project_context` is derived from the file at all.
 

@@ -140,7 +140,18 @@ trace:
   pre_rank_top_3: [...]
   post_rank_top_3: [...]
   tier: "keyed"
+  cache: "miss"
+  budget_remaining: untracked
 ```
+
+### Budget and cache (quota safety)
+
+Agents repeat themselves. A model that drops context re-asks the question it already asked; a retry loop re-issues the same search several times. On the keyless free tier that costs real quota (about 100 searches a day), and the failure is silent: the upstream starts refusing and the agent carries on from stale memory. Two mechanics, both local and both on by default:
+
+- **Daily search budget.** The server counts the upstream searches it makes per UTC day (a two-field counter at `<data dir>/budget.json`, shared by every you-aware process on the machine because the quota is per IP) and puts `budget_remaining` in every trace. When the count runs low (10 left, or 10% of the limit) the response carries a one-line `budget` warning asking the model to prefer results it already has. If the upstream actually rejects a call for quota, the day is pinned to `budget_remaining: 0` so later traces are right rather than optimistic. The budget is advisory: you-aware never refuses a search on its own count, because the upstream quota (which may reset at a different hour, or be shared behind one IP) is the authority. On the free tier the limit defaults to the documented 100/day; on the keyed tier it is untracked unless you set `YOU_AWARE_DAILY_BUDGET=<n>` to match your plan.
+- **Session result cache.** An exact repeat of an upstream request this session (same compiled query, parameters, count, and mode) is answered from memory: no upstream call, no quota spent, `cache: "hit"` and the result's age in the trace. Two phrasings that compile to the same lexical query share one entry; anything that changes the upstream call changes the key, so a cached answer is never returned for a different question. Rank-time mechanics (trusted/blocked ordering, memory boosts) still run on a hit. Entries expire after 15 minutes (`YOU_AWARE_CACHE_TTL_SECONDS`) and the cache is bounded to 200 entries in process memory; nothing is written to disk. Disable with `YOU_AWARE_CACHE=off`.
+
+Both tools also carry [MCP tool annotations](https://modelcontextprotocol.io/specification/2025-06-18/server/tools#tool-annotations): `search` is `readOnlyHint`, `idempotentHint`, `openWorldHint`; `report_outcome` writes to local memory and says so. Hosts that read annotations can use them to skip confirmation prompts and dedupe calls.
 
 ## Configuration
 
@@ -162,6 +173,9 @@ CLI flag > environment variable > default.
 | `--compile-mode` | `YOU_AWARE_COMPILE_MODE` | `auto` | `auto` (native params + query vocabulary) · `operators` (portable `-site:`/`after:` compilation) · `native` (native params; query side keeps keywordization + ledger exclusions). Forced to `operators` on the keyless free tier, which has no native params |
 | `--fresh-window-days` | `YOU_AWARE_FRESH_WINDOW_DAYS` | `180` | recency window compiled from `freshness: fresh` in operators mode |
 | `--count` | `YOU_AWARE_COUNT` | `10` | results requested per call |
+| `--daily-budget` | `YOU_AWARE_DAILY_BUDGET` | `auto` | daily search budget shown as `budget_remaining` in every trace: `auto` tracks the free tier's 100/day and leaves the keyed tier untracked; a number tracks that limit on either tier; `off` disables the counter |
+| `--no-cache` | `YOU_AWARE_CACHE=off` | on | disable the in-session exact-match result cache (every search goes upstream) |
+| `--cache-ttl-seconds` | `YOU_AWARE_CACHE_TTL_SECONDS` | `900` | how long a cached result is reused for an identical search |
 | `--base-url` | `YOU_API_BASE_URL` | `https://ydc-index.io/v1` | Search API endpoint |
 
 A sample `AGENTS.md` showing all section conventions is in [examples/AGENTS.md](./examples/AGENTS.md); client configs in [examples/client-config/](./examples/client-config).
@@ -188,7 +202,7 @@ npm run inspect     # MCP Inspector against the built server
 
 ## Status & roadmap
 
-**v1 (this repo):** standalone stdio MCP; four parameters via deterministic file-read + model merge, plus query compilation; decisions-ledger compilation; inspectable trace; per-project retrieval memory with outcome reporting, rank boosts, and context-file suggestions; two-tier data posture with local-first telemetry; ablation eval harness; companion Agent Skill.
+**v1 (this repo):** standalone stdio MCP; four parameters via deterministic file-read + model merge, plus query compilation; decisions-ledger compilation; inspectable trace; per-project retrieval memory with outcome reporting, rank boosts, and context-file suggestions; daily search budget and session result cache (quota safety, with MCP tool annotations); two-tier data posture with local-first telemetry; ablation eval harness; companion Agent Skill.
 
 ## Who's behind this
 

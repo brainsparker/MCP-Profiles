@@ -5,7 +5,24 @@
  */
 
 export { buildServer, type ServerDeps } from "./server.js";
-export { loadConfig, DEFAULT_BASE_URL, type Config, type CompileMode } from "./config.js";
+export { loadConfig, resolveDailyBudget, DEFAULT_BASE_URL, type Config, type CompileMode } from "./config.js";
+export {
+  SearchBudget,
+  isQuotaError,
+  FREE_TIER_DAILY_BUDGET,
+  LOW_BUDGET_WARN_AT,
+  type BudgetStatus,
+  type SearchBudgetOptions,
+} from "./budget.js";
+export {
+  SessionCache,
+  cacheKey,
+  DEFAULT_CACHE_TTL_SECONDS,
+  MAX_CACHE_ENTRIES,
+  type CacheLookup,
+  type CacheStatus,
+  type SessionCacheOptions,
+} from "./cache.js";
 export {
   YouComClient,
   parseHits,
