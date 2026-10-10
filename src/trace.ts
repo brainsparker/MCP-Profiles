@@ -1,3 +1,4 @@
+import type { CacheStatus } from "./cache.js";
 import type { Freshness } from "./types.js";
 
 /**
@@ -21,6 +22,16 @@ export interface Trace {
   post_rank_top_3: string[];
   /** Which retrieval path ran: "free" (hosted keyless tier) or "keyed" (direct Search API). */
   tier: "free" | "keyed";
+  /**
+   * Whether this result came from the in-session cache ("hit": no upstream
+   * call, no quota spent), went upstream ("miss"), or the cache was not in
+   * play ("disabled" by config; "not_applicable" when nothing was searched).
+   */
+  cache: CacheStatus;
+  /** Seconds since a cache hit's result was fetched; absent otherwise. */
+  cache_age_s?: number;
+  /** Searches left today by local count; null when untracked (keyed tier without a budget). */
+  budget_remaining: number | null;
 }
 
 const quote = (s: string): string => JSON.stringify(s);
@@ -41,5 +52,7 @@ export function formatTrace(t: Trace): string {
     `  pre_rank_top_3: ${list(t.pre_rank_top_3)}`,
     `  post_rank_top_3: ${list(t.post_rank_top_3)}`,
     `  tier: ${quote(t.tier)}`,
+    `  cache: ${quote(t.cache)}${t.cache_age_s !== undefined ? ` (${t.cache_age_s}s old)` : ""}`,
+    `  budget_remaining: ${t.budget_remaining === null ? "untracked" : t.budget_remaining}`,
   ].join("\n");
 }

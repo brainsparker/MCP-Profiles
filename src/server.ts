@@ -1,7 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import type { Config } from "./config.js";
+import { isQuotaError, SearchBudget } from "./budget.js";
+import { SessionCache, type CacheStatus } from "./cache.js";
+import { resolveDailyBudget, type Config } from "./config.js";
 import { compileQuery } from "./compile.js";
 import { findContextSource, readContextSource } from "./context/read.js";
 import { normalizeDomain, parseHarnessContext } from "./context/parse.js";
@@ -30,6 +32,10 @@ export interface ServerDeps {
   session: SessionMemory;
   /** Per-project retrieval memory (Tier 1, local). Constructed disabled when config.memory is off. */
   memory: ProjectMemory;
+  /** In-session exact-match result cache. Built from config when omitted. */
+  cache?: SessionCache;
+  /** Daily search budget (local count, advisory). Built from config and tier when omitted. */
+  budget?: SearchBudget;
   now?: () => Date;
 }
 
@@ -40,7 +46,10 @@ and retrieval parameters. Call \`search\` for technical research. You may also p
 blocked_sources, project_context, and freshness yourself from your working context — the server merges \
 your values with its deterministic file-read (the file-read is the safety net; your values can add \
 conversation-level context the file doesn't know about). If \`search\` returns a decomposition_request, \
-decompose the question into focused single-intent sub-queries and call \`search\` once per sub-query.`;
+decompose the question into focused single-intent sub-queries and call \`search\` once per sub-query. \
+Every response ends with a trace; read \`budget_remaining\` (searches left today by local count) before \
+issuing more searches, and reuse results you already have. Repeating an identical search is served from \
+the session cache (\`cache: "hit"\`) and costs nothing, but rephrasing the same question does.`;
 
 const searchDescription = (tier: "free" | "keyed"): string =>
   `Web search over ${
@@ -148,6 +157,10 @@ function formatResults(hits: SearchHit[]): string {
 export function buildServer(deps: ServerDeps): McpServer {
   const { config, telemetry, session } = deps;
   const now = deps.now ?? (() => new Date());
+  const cache =
+    deps.cache ?? new SessionCache({ enabled: config.cache, ttlSeconds: config.cacheTtlSeconds, now });
+  const budget =
+    deps.budget ?? new SearchBudget({ limit: resolveDailyBudget(config, deps.tier), dir: config.dataDir, now });
 
   const server = new McpServer(
     { name: "you-aware", version: VERSION },
@@ -200,6 +213,15 @@ export function buildServer(deps: ServerDeps): McpServer {
     {
       title: "You.com context-aware search",
       description: searchDescription(deps.tier),
+      // Hints for the host (MCP tool annotations): search reads the open web
+      // and changes nothing; the same arguments return the same answer (the
+      // session cache makes that literal), so a host may dedupe calls safely.
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
       inputSchema: {
         query: z
           .string()
@@ -266,6 +288,8 @@ export function buildServer(deps: ServerDeps): McpServer {
           [],
           [],
           deps.tier,
+          "not_applicable",
+          budget.status().remaining,
         );
         return {
           content: [
@@ -333,26 +357,55 @@ export function buildServer(deps: ServerDeps): McpServer {
         session_calls: session.calls,
       };
 
+      const request = {
+        query: compiled.query,
+        count: config.count,
+        params: prov.final,
+        sendNativeParams: config.compileMode !== "operators",
+      };
+
+      // Exact repeat of an upstream request this session: answer from the
+      // cache, spend nothing. Anything that changes the upstream call
+      // changes the key, so this never answers a different question.
+      const cached = cache.lookup(request);
       let hits: SearchHit[];
-      try {
-        hits = await deps.client.search({
-          query: compiled.query,
-          count: config.count,
-          params: prov.final,
-          sendNativeParams: config.compileMode !== "operators",
-        });
-      } catch (err) {
-        const message = (err as Error).message;
-        telemetry.record({ type: "error", ...baseEvent, error: sanitizeError(message) });
-        return {
-          isError: true,
-          content: [
-            {
-              type: "text",
-              text: `Search failed: ${message}\n\n${formatTrace(traceFor(queryReceived, compiled.query, compiled, prov.final, [], [], [], deps.tier))}`,
-            },
-          ],
-        };
+      const cacheStatus: CacheStatus = cached.status;
+      let budgetRemaining: number | null;
+      if (cached.status === "hit") {
+        hits = cached.hits!;
+        budgetRemaining = budget.status().remaining;
+      } else {
+        // Count the attempt before it goes out: a failed call still spent quota.
+        budgetRemaining = budget.consume().remaining;
+        try {
+          hits = await deps.client.search(request);
+        } catch (err) {
+          const message = (err as Error).message;
+          // The upstream's own refusal is the authoritative quota signal.
+          if (isQuotaError(message)) budgetRemaining = budget.markExhausted().remaining;
+          telemetry.record({
+            type: "error",
+            ...baseEvent,
+            error: sanitizeError(message),
+            ...(budgetRemaining === null ? {} : { budget_remaining: budgetRemaining }),
+          });
+          const warning = budget.warning();
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text",
+                text:
+                  `Search failed: ${message}\n\n` +
+                  formatTrace(
+                    traceFor(queryReceived, compiled.query, compiled, prov.final, [], [], [], deps.tier, cacheStatus, budgetRemaining),
+                  ) +
+                  (warning ? `\n\n${warning}` : ""),
+              },
+            ],
+          };
+        }
+        cache.store(request, hits);
       }
 
       const ranked = postRank(
@@ -370,6 +423,9 @@ export function buildServer(deps: ServerDeps): McpServer {
         ranked.postRankTop3,
         ranked.memoryBoosted,
         deps.tier,
+        cacheStatus,
+        budgetRemaining,
+        cached.ageSeconds,
       );
 
       const shownUrls = ranked.hits.map((h) => h.url);
@@ -389,8 +445,13 @@ export function buildServer(deps: ServerDeps): McpServer {
         ...baseEvent,
         result_urls: shownUrls,
         memory_boost: ranked.memoryBoosted,
+        cache_hit: cacheStatus === "hit",
+        ...(budgetRemaining === null ? {} : { budget_remaining: budgetRemaining }),
       });
 
+      // Advisory only: the budget never blocks a search, it makes the spend
+      // visible so the model can stop before the upstream starts refusing.
+      const budgetWarning = budget.warning();
       // The nudge is what makes the memory loop actually close: models don't
       // spontaneously call bookkeeping tools, so every result set carries the ask.
       const nudge = config.memory
@@ -400,7 +461,10 @@ export function buildServer(deps: ServerDeps): McpServer {
         content: [
           {
             type: "text",
-            text: `${formatResults(ranked.hits)}\n\n${formatTrace(trace)}${formatSuggestions(contextSuggestions)}${nudge}`,
+            text:
+              `${formatResults(ranked.hits)}\n\n${formatTrace(trace)}${formatSuggestions(contextSuggestions)}` +
+              (budgetWarning ? `\n\n${budgetWarning}` : "") +
+              nudge,
           },
         ],
         structuredContent: {
@@ -408,6 +472,7 @@ export function buildServer(deps: ServerDeps): McpServer {
           results: ranked.hits,
           trace,
           ...(contextSuggestions.length > 0 ? { context_suggestions: contextSuggestions } : {}),
+          ...(budgetWarning ? { budget_warning: budgetWarning } : {}),
         },
       };
     },
@@ -418,6 +483,15 @@ export function buildServer(deps: ServerDeps): McpServer {
       "report_outcome",
       {
         title: "Report which search results you used",
+        // Writes to the local per-project memory; each call adds counts, so
+        // a repeat is not a no-op. Nothing is deleted and nothing leaves the
+        // machine through this tool.
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: false,
+          openWorldHint: false,
+        },
         description:
           "Tell you-aware which result URLs from this session you actually cited or used. " +
           "Feeds the project's local retrieval memory (the store stays on this machine; cited domains " +
@@ -493,6 +567,9 @@ function traceFor(
   post3: string[],
   memoryBoost: string[],
   tier: "free" | "keyed",
+  cache: CacheStatus,
+  budgetRemaining: number | null,
+  cacheAgeSeconds?: number,
 ): Trace {
   return {
     query_received: received,
@@ -506,5 +583,8 @@ function traceFor(
     pre_rank_top_3: pre3,
     post_rank_top_3: post3,
     tier,
+    cache,
+    ...(cacheAgeSeconds === undefined ? {} : { cache_age_s: cacheAgeSeconds }),
+    budget_remaining: budgetRemaining,
   };
 }

@@ -66,6 +66,10 @@ export interface Tier2Event {
   suggestion_action?: "add_trusted_source";
   suggestion_cited_count?: number;
   suggestion_session_count?: number;
+  /** Served from the in-session cache (no upstream call, no quota spent). */
+  cache_hit?: boolean;
+  /** Daily budget left by local count after this call; absent when untracked. */
+  budget_remaining?: number;
   error?: string;
 }
 

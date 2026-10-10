@@ -1,5 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { FREE_TIER_DAILY_BUDGET } from "./budget.js";
+import { DEFAULT_CACHE_TTL_SECONDS } from "./cache.js";
 
 /**
  * How compiled context reaches the Search API (PRD open question §14.7):
@@ -46,6 +48,16 @@ export interface Config {
   count: number;
   /** Hosted MCP endpoint used for the keyless free tier (`?profile=free` is appended). */
   hostedMcpUrl: string;
+  /**
+   * Daily search budget tracked locally and shown in every trace.
+   * "auto": the documented free-tier allowance (100/day) when keyless, untracked when keyed.
+   * A number: track against that limit on either tier. "off": no tracking.
+   */
+  dailyBudget: number | "auto" | "off";
+  /** In-session exact-match result cache (repeat identical searches cost no quota). Opt-out via --no-cache. */
+  cache: boolean;
+  /** How long a cached result is reused, in seconds. */
+  cacheTtlSeconds: number;
 }
 
 export const DEFAULT_BASE_URL = "https://ydc-index.io/v1";
@@ -108,6 +120,15 @@ export function loadConfig(argv: string[] = [], env: NodeJS.ProcessEnv = process
   const telemetryDir =
     str("telemetry-dir") ?? nonEmpty(env.YOU_AWARE_TELEMETRY_DIR) ?? join(homedir(), ".you-aware");
 
+  const rawBudget = str("daily-budget") ?? nonEmpty(env.YOU_AWARE_DAILY_BUDGET);
+  let dailyBudget: number | "auto" | "off" = "auto";
+  if (rawBudget !== undefined) {
+    const lowered = rawBudget.toLowerCase();
+    if (lowered === "off" || lowered === "0" || lowered === "false" || lowered === "no") dailyBudget = "off";
+    else if (lowered === "auto") dailyBudget = "auto";
+    else dailyBudget = positiveInt("daily-budget", rawBudget, FREE_TIER_DAILY_BUDGET, 1_000_000);
+  }
+
   return {
     apiKey: str("api-key") ?? nonEmpty(env.YDC_API_KEY) ?? nonEmpty(env.YOU_API_KEY),
     baseUrl: str("base-url") ?? nonEmpty(env.YOU_API_BASE_URL) ?? DEFAULT_BASE_URL,
@@ -130,5 +151,23 @@ export function loadConfig(argv: string[] = [], env: NodeJS.ProcessEnv = process
     ),
     count: positiveInt("count", str("count") ?? nonEmpty(env.YOU_AWARE_COUNT), 10, 50),
     hostedMcpUrl: str("hosted-mcp-url") ?? nonEmpty(env.YOU_AWARE_HOSTED_MCP_URL) ?? "https://api.you.com/mcp",
+    dailyBudget,
+    cache: args.has("no-cache") ? false : (envFlag(env.YOU_AWARE_CACHE) ?? true),
+    cacheTtlSeconds: positiveInt(
+      "cache-ttl-seconds",
+      str("cache-ttl-seconds") ?? nonEmpty(env.YOU_AWARE_CACHE_TTL_SECONDS),
+      DEFAULT_CACHE_TTL_SECONDS,
+      86_400,
+    ),
   };
+}
+
+/**
+ * The daily limit the budget tracks for a tier: the configured number, the
+ * documented free-tier allowance under "auto" when keyless, or none.
+ */
+export function resolveDailyBudget(config: Pick<Config, "dailyBudget">, tier: "free" | "keyed"): number | undefined {
+  if (config.dailyBudget === "off") return undefined;
+  if (config.dailyBudget === "auto") return tier === "free" ? FREE_TIER_DAILY_BUDGET : undefined;
+  return config.dailyBudget;
 }

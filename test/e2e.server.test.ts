@@ -71,6 +71,9 @@ function makeConfig(root: string, tDir: string): Config {
     freshWindowDays: 180,
     count: 10,
     hostedMcpUrl: "https://api.you.com/mcp",
+    dailyBudget: "auto",
+    cache: true,
+    cacheTtlSeconds: 900,
   };
 }
 
@@ -120,6 +123,24 @@ describe("you-aware e2e", () => {
     expect(props.sort()).toEqual(
       ["blocked_sources", "freshness", "project_context", "query", "trusted_sources"].sort(),
     );
+  });
+
+  it("declares MCP tool annotations: search is read-only and idempotent, report_outcome writes locally", async () => {
+    const { tools } = await client.listTools();
+    const search = tools.find((t) => t.name === "search")!;
+    expect(search.annotations).toMatchObject({
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    });
+    const outcome = tools.find((t) => t.name === "report_outcome")!;
+    expect(outcome.annotations).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    });
   });
 
   it("runs the §9.2 flow: file-read, compilation, ranked results, inspectable trace", async () => {
@@ -437,6 +458,168 @@ describe("you-aware e2e", () => {
     expect(freeFake.requests.at(-1)!.params.freshness).toBe("fresh");
     await c.close();
     await keyless.close();
+  });
+
+  it("serves an identical repeat search from the session cache: no upstream call, trace says so", async () => {
+    const root = mkdtempSync(join(tmpdir(), "you-aware-cache-"));
+    const dataDir = mkdtempSync(join(tmpdir(), "you-aware-cache-data-"));
+    writeFileSync(join(root, "AGENTS.md"), AGENTS_MD);
+    const cfg = makeConfig(root, dataDir);
+    const cacheFake = new FakeClient();
+    const s = buildServer({
+      config: cfg,
+      client: cacheFake,
+      tier: "keyed",
+      telemetry: new Telemetry({ enabled: true, dir: dataDir }),
+      session: new SessionMemory(),
+      memory: makeMemory(cfg),
+    });
+    const c = await connect(s);
+    const first = (await c.callTool({
+      name: "search",
+      arguments: { query: "best way to handle date parsing in this project" },
+    })) as CallToolResult;
+    expect((first.structuredContent as { trace: { cache: string } }).trace.cache).toBe("miss");
+    expect(cacheFake.requests).toHaveLength(1);
+
+    // A differently phrased query that compiles to the same upstream request is the same search.
+    const second = (await c.callTool({
+      name: "search",
+      arguments: { query: "best way to handle date parsing in this project" },
+    })) as CallToolResult;
+    const sc = second.structuredContent as { results: SearchHit[]; trace: Record<string, unknown> };
+    expect(sc.trace.cache).toBe("hit");
+    expect(typeof sc.trace.cache_age_s).toBe("number");
+    expect(cacheFake.requests).toHaveLength(1);
+    // Rank-time mechanics still apply to cached hits.
+    expect(sc.results[0]!.url).toContain("react.dev");
+    const text = (second.content as { text: string }[]).map((c) => c.text).join("\n");
+    expect(text).toContain('cache: "hit"');
+
+    // A changed parameter is a different search and goes upstream.
+    await c.callTool({
+      name: "search",
+      arguments: { query: "best way to handle date parsing in this project", freshness: "fresh" },
+    });
+    expect(cacheFake.requests).toHaveLength(2);
+
+    const events = readFileSync(join(dataDir, "telemetry.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l))
+      .filter((e) => e.type === "search");
+    expect(events.map((e) => e.cache_hit)).toEqual([false, true, false]);
+    await c.close();
+    await s.close();
+  });
+
+  it("tracks the daily budget on the free tier, warns when low, and learns exhaustion from a 429", async () => {
+    const root = mkdtempSync(join(tmpdir(), "you-aware-budget-"));
+    const dataDir = mkdtempSync(join(tmpdir(), "you-aware-budget-data-"));
+    writeFileSync(join(root, "AGENTS.md"), AGENTS_MD);
+    const cfg: Config = { ...makeConfig(root, dataDir), apiKey: undefined, compileMode: "operators", dailyBudget: 3 };
+    let failNext = false;
+    const flaky: SearchClient = {
+      async search() {
+        if (failNext) throw new Error("You.com hosted search error (rate limited)\nToo many requests");
+        return FIXTURE_HITS;
+      },
+    };
+    const s = buildServer({
+      config: cfg,
+      client: flaky,
+      tier: "free",
+      telemetry: new Telemetry({ enabled: true, dir: dataDir }),
+      session: new SessionMemory(),
+      memory: makeMemory(cfg),
+    });
+    const c = await connect(s);
+    const q = (i: number) => ({ name: "search", arguments: { query: `react server components streaming ${i}` } });
+
+    const r1 = (await c.callTool(q(1))) as CallToolResult;
+    const t1 = r1.structuredContent as { trace: { budget_remaining: number; tier: string }; budget_warning?: string };
+    expect(t1.trace.tier).toBe("free");
+    expect(t1.trace.budget_remaining).toBe(2);
+    // Low-budget warning applies at the floor threshold (10) regardless of a tiny limit.
+    expect(t1.budget_warning).toMatch(/^budget: 2 of 3 daily searches left/);
+
+    // A cache hit spends nothing.
+    const r1again = (await c.callTool(q(1))) as CallToolResult;
+    expect((r1again.structuredContent as { trace: { budget_remaining: number } }).trace.budget_remaining).toBe(2);
+
+    await c.callTool(q(2));
+    const r3 = (await c.callTool(q(3))) as CallToolResult;
+    expect((r3.structuredContent as { trace: { budget_remaining: number } }).trace.budget_remaining).toBe(0);
+    const text3 = (r3.content as { text: string }[]).map((c) => c.text).join("\n");
+    expect(text3).toContain("budget_remaining: 0");
+    expect(text3).toContain("3 of 3 daily searches used");
+
+    // The upstream's refusal is authoritative: the day is pinned to exhausted.
+    failNext = true;
+    const r4 = (await c.callTool(q(4))) as CallToolResult;
+    expect(r4.isError).toBe(true);
+    const text4 = (r4.content as { text: string }[]).map((c) => c.text).join("\n");
+    expect(text4).toContain("budget_remaining: 0");
+    expect(text4).toContain("the upstream rejected a search for quota today");
+
+    // The counter is machine-wide and on disk: a second server sees it. The
+    // rejected fourth attempt counts too (it spent an upstream call).
+    const budgetFile = JSON.parse(readFileSync(join(dataDir, "budget.json"), "utf8"));
+    expect(budgetFile).toMatchObject({ version: 1, used: 4, exhausted: true });
+    expect(Object.keys(budgetFile).sort()).toEqual(["day", "exhausted", "used", "version"]);
+
+    const events = readFileSync(join(dataDir, "telemetry.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+    expect(events.filter((e) => e.type === "search").map((e) => e.budget_remaining)).toEqual([2, 2, 1, 0]);
+    expect(events.find((e) => e.type === "error").budget_remaining).toBe(0);
+    await c.close();
+    await s.close();
+  });
+
+  it("leaves the budget untracked on the keyed tier unless a limit is configured", async () => {
+    const root = mkdtempSync(join(tmpdir(), "you-aware-keyed-budget-"));
+    const dataDir = mkdtempSync(join(tmpdir(), "you-aware-keyed-budget-data-"));
+    writeFileSync(join(root, "AGENTS.md"), AGENTS_MD);
+    const cfg = makeConfig(root, dataDir);
+    const s = buildServer({
+      config: cfg,
+      client: new FakeClient(),
+      tier: "keyed",
+      telemetry: new Telemetry({ enabled: false, dir: dataDir }),
+      session: new SessionMemory(),
+      memory: makeMemory(cfg),
+    });
+    const c = await connect(s);
+    const res = (await c.callTool({
+      name: "search",
+      arguments: { query: "vite library mode externals" },
+    })) as CallToolResult;
+    const sc = res.structuredContent as { trace: { budget_remaining: unknown; cache: string } };
+    expect(sc.trace.budget_remaining).toBeNull();
+    const text = (res.content as { text: string }[]).map((c) => c.text).join("\n");
+    expect(text).toContain("budget_remaining: untracked");
+    // Untracked means no counter file at all.
+    expect(existsSync(join(dataDir, "budget.json"))).toBe(false);
+
+    // An explicit limit turns tracking on for the keyed tier too.
+    const limited = buildServer({
+      config: { ...cfg, dailyBudget: 1000 },
+      client: new FakeClient(),
+      tier: "keyed",
+      telemetry: new Telemetry({ enabled: false, dir: dataDir }),
+      session: new SessionMemory(),
+      memory: makeMemory(cfg),
+    });
+    const lc = await connect(limited);
+    const lres = (await lc.callTool({ name: "search", arguments: { query: "vite library mode externals" } })) as CallToolResult;
+    expect((lres.structuredContent as { trace: { budget_remaining: number } }).trace.budget_remaining).toBe(999);
+    expect(existsSync(join(dataDir, "budget.json"))).toBe(true);
+    await lc.close();
+    await limited.close();
+    await c.close();
+    await s.close();
   });
 
   it("ignores report_outcome URLs that were never shown this session", async () => {
