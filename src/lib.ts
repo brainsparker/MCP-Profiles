@@ -33,6 +33,25 @@ export {
 export { populateParams, type ParamProvenance } from "./params.js";
 export { postRank, domainOf } from "./rank.js";
 export { SessionMemory } from "./session.js";
+export {
+  loadSkill,
+  loadSkillsDir,
+  defaultSkillsDir,
+  parseFrontmatter,
+  registerSkills,
+  sha256Digest,
+  SKILLS_EXTENSION_ID,
+  SKILL_URI_SCHEME,
+  SKILLS_TTL_MS,
+  MAX_SKILL_RESOURCES,
+  MAX_SKILL_BYTES,
+  type LoadedSkill,
+  type SkillEntry,
+  type SkillFile,
+  type SkillFrontmatter,
+  type SkillResource,
+  type SkillsCatalog,
+} from "./skills.js";
 export { Telemetry, type Tier2Event, type TelemetryOptions } from "./telemetry.js";
 export { formatTrace, type Trace } from "./trace.js";
 export {

@@ -2,6 +2,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { loadConfig } from "./config.js";
 import { HostedMcpClient } from "./hostedClient.js";
 import { ProjectMemory } from "./memory.js";
+import { defaultSkillsDir, loadSkillsDir, type LoadedSkill } from "./skills.js";
 import { buildServer } from "./server.js";
 import { SessionMemory } from "./session.js";
 import { Telemetry } from "./telemetry.js";
@@ -79,10 +80,22 @@ async function main(): Promise<void> {
     ? new YouComClient({ apiKey: config.apiKey, baseUrl: config.baseUrl })
     : new HostedMcpClient({ url: config.hostedMcpUrl, freshWindowDays: config.freshWindowDays });
 
-  const server = buildServer({ config: effectiveConfig, client, tier, telemetry, session, memory });
+  let skills: LoadedSkill[] = [];
+  if (config.skills) {
+    const catalog = loadSkillsDir(defaultSkillsDir());
+    skills = catalog.skills;
+    for (const s of catalog.skipped) log.warn(`skill not served (${s.dir}): ${s.reason}`);
+  } else {
+    log.info("skills: disabled (companion skill not served over MCP)");
+  }
+
+  const server = buildServer({ config: effectiveConfig, client, tier, telemetry, session, memory, skills });
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  log.info(`ready (tier: ${tier}, compile mode: ${effectiveConfig.compileMode}, session: ${session.sessionId})`);
+  log.info(
+    `ready (tier: ${tier}, compile mode: ${effectiveConfig.compileMode}, session: ${session.sessionId}` +
+      `${skills.length > 0 ? `, skills over MCP: ${skills.map((s) => s.entry.uri).join(", ")}` : ""})`,
+  );
 
   const shutdown = async (): Promise<void> => {
     log.info("shutting down…");
