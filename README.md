@@ -69,13 +69,17 @@ One config block (or one command). No account creation. No memory setup. First r
 
 ### Companion skill
 
-[`skills/you-aware/`](./skills/you-aware) is an [Agent Skill](https://agentskills.io) that teaches an agent both halves of the loop — when and how to call `search`, and how to keep the `AGENTS.md` sections current. Install it by copying the folder into your client's skills directory — project-level `.opencode/skills/`, `.claude/skills/`, or `.agents/skills/`, or their global equivalents (`~/.config/opencode/skills/`, `~/.claude/skills/`, `~/.agents/skills/`):
+[`skills/you-aware/`](./skills/you-aware) is an [Agent Skill](https://agentskills.io) that teaches an agent both halves of the loop — when and how to call `search`, and how to keep the `AGENTS.md` sections current. The skill body loads only when relevant — its at-rest cost is one description line.
+
+**Served over MCP.** The server publishes the skill through the [MCP Skills extension](https://skills.extensions.modelcontextprotocol.io/specification/stable/skills) (`io.modelcontextprotocol/skills`, SEP-2640): it declares the extension in its capabilities, answers `skills/list` and `skills/get` with the skill's verbatim frontmatter plus a manifest of every file with a SHA-256 digest and byte size, and serves the files as resources under `skill://you-aware/…` via `resources/read`. A host that implements the extension discovers, verifies, and installs the skill with no copy step; the server's `instructions` also point at `skill://you-aware/SKILL.md` directly. Hosts without the extension see the same files as ordinary resources. Opt out with `--no-skills` / `YOU_AWARE_SKILLS=off`.
+
+**Or install it by hand.** Copy the folder into your client's skills directory — project-level `.opencode/skills/`, `.claude/skills/`, or `.agents/skills/`, or their global equivalents (`~/.config/opencode/skills/`, `~/.claude/skills/`, `~/.agents/skills/`):
 
 ```bash
 cp -r node_modules/@brainsparker/you-aware/skills/you-aware .opencode/skills/
 ```
 
-(or copy it straight from this repo). The skill body loads only when relevant — its at-rest cost is one description line.
+(or copy it straight from this repo).
 
 ## What it does
 
@@ -155,6 +159,7 @@ CLI flag > environment variable > default.
 | `--no-context-read` | `YOU_AWARE_READ_CONTEXT=off` | on | disable the deterministic file-read |
 | `--context-fallback head` | `YOU_AWARE_CONTEXT_FALLBACK=head` | off | opt in: without a `## Project Context` section, send the top 4 KB of the context file as `project_context` |
 | `--no-memory` | `YOU_AWARE_MEMORY=off` | on | disable per-project retrieval memory (boosts, suggestions, `report_outcome`) |
+| `--no-skills` | `YOU_AWARE_SKILLS=off` | on | stop serving the companion skill over MCP (`io.modelcontextprotocol/skills`: `skills/list`, `skills/get`, `skill://` resources) |
 | `--data-dir` | `YOU_AWARE_DATA_DIR` | telemetry dir | where the local (Tier 1) per-project memory store lives |
 | `--no-telemetry` | `YOU_AWARE_TELEMETRY=off` | on | opt out of Tier 2 telemetry |
 | `--telemetry-url` | `YOU_AWARE_TELEMETRY_URL` | — | remote Tier 2 sink (events always spool locally while telemetry is on) |
@@ -188,7 +193,7 @@ npm run inspect     # MCP Inspector against the built server
 
 ## Status & roadmap
 
-**v1 (this repo):** standalone stdio MCP; four parameters via deterministic file-read + model merge, plus query compilation; decisions-ledger compilation; inspectable trace; per-project retrieval memory with outcome reporting, rank boosts, and context-file suggestions; two-tier data posture with local-first telemetry; ablation eval harness; companion Agent Skill.
+**v1 (this repo):** standalone stdio MCP; four parameters via deterministic file-read + model merge, plus query compilation; decisions-ledger compilation; inspectable trace; per-project retrieval memory with outcome reporting, rank boosts, and context-file suggestions; two-tier data posture with local-first telemetry; ablation eval harness; companion Agent Skill, served over MCP (Skills extension) and installable by hand.
 
 ## Who's behind this
 

@@ -46,6 +46,12 @@ export interface Config {
   count: number;
   /** Hosted MCP endpoint used for the keyless free tier (`?profile=free` is appended). */
   hostedMcpUrl: string;
+  /**
+   * Serve the bundled companion skill over MCP (extension
+   * `io.modelcontextprotocol/skills`: skills/list, skills/get, skill:// resources).
+   * Opt-out via --no-skills. Hosts without the extension see plain resources.
+   */
+  skills: boolean;
 }
 
 export const DEFAULT_BASE_URL = "https://ydc-index.io/v1";
@@ -130,5 +136,6 @@ export function loadConfig(argv: string[] = [], env: NodeJS.ProcessEnv = process
     ),
     count: positiveInt("count", str("count") ?? nonEmpty(env.YOU_AWARE_COUNT), 10, 50),
     hostedMcpUrl: str("hosted-mcp-url") ?? nonEmpty(env.YOU_AWARE_HOSTED_MCP_URL) ?? "https://api.you.com/mcp",
+    skills: args.has("no-skills") ? false : (envFlag(env.YOU_AWARE_SKILLS) ?? true),
   };
 }

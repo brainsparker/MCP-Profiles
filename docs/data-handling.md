@@ -1,6 +1,6 @@
 # Data handling
 
-`you-aware` has a two-tier data posture. The source code in this repository is the auditable boundary — every byte that leaves the process goes through [`src/youcom.ts`](../src/youcom.ts) (the keyed search call), [`src/hostedClient.ts`](../src/hostedClient.ts) (the keyless free-tier search, via You.com's hosted MCP endpoint), or [`src/telemetry.ts`](../src/telemetry.ts) (telemetry events). There is no other network code.
+`you-aware` has a two-tier data posture. The source code in this repository is the auditable boundary — every byte that leaves the process goes through [`src/youcom.ts`](../src/youcom.ts) (the keyed search call), [`src/hostedClient.ts`](../src/hostedClient.ts) (the keyless free-tier search, via You.com's hosted MCP endpoint), or [`src/telemetry.ts`](../src/telemetry.ts) (telemetry events). There is no other network code. The companion skill served over MCP (`skills/list`, `skills/get`, `skill://` resources in [`src/skills.ts`](../src/skills.ts)) travels only over the stdio connection to your own harness; it reads the package's bundled `skills/` directory and nothing from your project.
 
 ## Tier 1 — never leaves the machine
 

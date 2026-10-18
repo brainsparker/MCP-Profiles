@@ -71,6 +71,7 @@ function makeConfig(root: string, tDir: string): Config {
     freshWindowDays: 180,
     count: 10,
     hostedMcpUrl: "https://api.you.com/mcp",
+    skills: true,
   };
 }
 

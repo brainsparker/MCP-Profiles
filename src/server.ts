@@ -10,6 +10,7 @@ import { ProjectMemory, type ContextSuggestion } from "./memory.js";
 import { populateParams, type ParamProvenance } from "./params.js";
 import { domainOf, postRank } from "./rank.js";
 import { SessionMemory } from "./session.js";
+import { defaultSkillsDir, loadSkillsDir, registerSkills, type LoadedSkill } from "./skills.js";
 import { formatTrace, type Trace } from "./trace.js";
 import { Telemetry } from "./telemetry.js";
 import type { HarnessContext, SearchHit, SearchParams } from "./types.js";
@@ -31,6 +32,11 @@ export interface ServerDeps {
   /** Per-project retrieval memory (Tier 1, local). Constructed disabled when config.memory is off. */
   memory: ProjectMemory;
   now?: () => Date;
+  /**
+   * Skills to serve over MCP. Defaults to the package's skills/ directory when
+   * config.skills is on; pass an explicit array (possibly empty) to override.
+   */
+  skills?: LoadedSkill[];
 }
 
 const SERVER_INSTRUCTIONS = `you-aware makes web search context-aware: it reads the project's context file — \
@@ -41,6 +47,9 @@ blocked_sources, project_context, and freshness yourself from your working conte
 your values with its deterministic file-read (the file-read is the safety net; your values can add \
 conversation-level context the file doesn't know about). If \`search\` returns a decomposition_request, \
 decompose the question into focused single-intent sub-queries and call \`search\` once per sub-query.`;
+
+const SKILL_POINTER = ` The full usage guide (when to search, how to report outcomes, how to keep AGENTS.md \
+current) is served as an Agent Skill at skill://you-aware/SKILL.md (skills/list, skills/get, resources/read).`;
 
 const searchDescription = (tier: "free" | "keyed"): string =>
   `Web search over ${
@@ -149,10 +158,12 @@ export function buildServer(deps: ServerDeps): McpServer {
   const { config, telemetry, session } = deps;
   const now = deps.now ?? (() => new Date());
 
+  const skills = deps.skills ?? (config.skills ? loadSkillsDir(defaultSkillsDir()).skills : []);
   const server = new McpServer(
     { name: "you-aware", version: VERSION },
-    { instructions: SERVER_INSTRUCTIONS },
+    { instructions: skills.length > 0 ? SERVER_INSTRUCTIONS + SKILL_POINTER : SERVER_INSTRUCTIONS },
   );
+  if (skills.length > 0) registerSkills(server, skills);
 
   // Queries already bounced as multi-hop this session (see the search handler).
   const bouncedQueries = new Set<string>();
